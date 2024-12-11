@@ -377,6 +377,44 @@ type Helm struct {
 	KubeVersion string `json:"kubeVersion,omitempty"`
 }
 
+type KustomizePatchConfig struct {
+	// Image is a container image to set or update in the Kustomization file.
+	Image KustomizePatchConfigImage `json:"image"`
+	// Kind to target in patch - also used for ensuring only 1 patch exists.
+	Kind string `json:"kind"`
+	// Label selector to apply to - also used for ensuring only 1 patch exists.
+	LabelSelector string `json:"labelSelector"`
+	// Path to the directory containing the Kustomization file.
+	Path string `json:"path"`
+	// Path to full image (registry/image:tag) in patch.
+	PathToImage string `json:"pathToImage,omitempty"`
+	// Path to repository (registry/image) in patch.
+	PathToRepository string `json:"pathToRepository,omitempty"`
+	// Path to tag in patch.
+	PathToTag string `json:"pathToTag,omitempty"`
+}
+
+// Image is a container image to set or update in the Kustomization file.
+type KustomizePatchConfigImage struct {
+	// Digest of the image to set in the Kustomization file. Mutually exclusive with 'tag' and
+	// 'useDigest=true'.
+	Digest     string           `json:"digest,omitempty"`
+	FromOrigin *ChartFromOrigin `json:"fromOrigin,omitempty"`
+	// Image name of the repository from which to pick the version. This is the image name Kargo
+	// is subscribed to, and produces Freight for.
+	Image string `json:"image,omitempty"`
+	// Name of the image (as defined in the Kustomization file).
+	Name string `json:"name,omitempty"`
+	// NewName for the image. This can be used to rename the container image name in the
+	// manifests.
+	NewName string `json:"newName,omitempty"`
+	// Tag of the image to set in the Kustomization file. Mutually exclusive with 'digest' and
+	// 'useDigest=true'.
+	Tag string `json:"tag,omitempty"`
+	// UseDigest specifies whether to use the digest of the image instead of the tag.
+	UseDigest bool `json:"useDigest,omitempty"`
+}
+
 type KustomizeSetImageConfig struct {
 	// Images is a list of container images to set or update in the Kustomization file. When
 	// left unspecified, all images from the Freight collection will be set in the Kustomization
