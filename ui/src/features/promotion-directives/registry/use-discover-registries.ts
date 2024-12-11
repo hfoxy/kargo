@@ -41,6 +41,7 @@ import helmUpdateImageConfig from '@ui/gen/directives/helm-update-image-config.j
 import httpConfig from '@ui/gen/directives/http-config.json';
 import kustomizeBuildConfig from '@ui/gen/directives/kustomize-build-config.json';
 import kustomizeSetImageConfig from '@ui/gen/directives/kustomize-set-image-config.json';
+import kustomizePatchConfig from '@ui/gen/directives/kustomize-patch-config.json';
 import yamlUpdateConfig from '@ui/gen/directives/yaml-update-config.json';
 
 import { PromotionDirectivesRegistry } from './types';
@@ -125,6 +126,11 @@ export const useDiscoverPromotionDirectivesRegistries = (): PromotionDirectivesR
         identifier: 'kustomize-set-image',
         unstable_icons: [faFileImage, faFileEdit],
         config: kustomizeSetImageConfig as JSONSchema7
+      },
+      {
+        identifier: 'kustomize-patch',
+        unstable_icons: [faFileImage, faFileEdit],
+        config: kustomizePatchConfig as JSONSchema7
       },
       {
         identifier: 'http',

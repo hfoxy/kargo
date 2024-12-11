@@ -1,0 +1,108 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "KustomizeSetImageConfig",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["path", "image", "kind", "labelSelector"],
+ "oneOf": [
+  {
+   "required": ["pathToImage"],
+   "properties": {
+    "pathToImage": { "minLength": 1 },
+    "pathToRepository": { "enum": ["", null] },
+    "pathToTag": { "enum": ["", null] },
+    "kind": { "minLength": 1 },
+    "labelSelector": { "minLength": 1 }
+   }
+  },
+  {
+   "required": ["pathToRepository", "pathToTag"],
+   "properties": {
+    "pathToImage": { "enum": ["", null] },
+    "pathToRepository": { "minLength": 1 },
+    "pathToTag": { "minLength": 1 },
+    "kind": { "minLength": 1 },
+    "labelSelector": { "minLength": 1 }
+   }
+  }
+ ],
+ "properties": {
+  "path": {
+   "type": "string",
+   "description": "Path to the directory containing the Kustomization file.",
+   "minLength": 1
+  },
+  "labelSelector": {
+   "type": "string",
+   "description": "Label selector to apply to - also used for ensuring only 1 patch exists.",
+   "minLength": 1
+  },
+  "kind": {
+   "type": "string",
+   "description": "Kind to target in patch - also used for ensuring only 1 patch exists.",
+   "minLength": 1
+  },
+  "pathToImage": {
+   "type": "string",
+   "description": "Path to full image (registry/image:tag) in patch."
+  },
+  "pathToRepository": {
+   "type": "string",
+   "description": "Path to repository (registry/image) in patch."
+  },
+  "pathToTag": {
+   "type": "string",
+   "description": "Path to tag in patch."
+  },
+  "image": {
+   "type": "object",
+   "description": "Images is a list of container images to set or update in the Kustomization file. When left unspecified, all images from the Freight collection will be set in the Kustomization file. Unless there is an ambiguous image name (for example, due to two Warehouses subscribing to the same repository), which requires manual configuration.",
+   "additionalProperties": false,
+   "properties": {
+    "digest": {
+     "type": "string",
+     "description": "Digest of the image to set in the Kustomization file. Mutually exclusive with 'tag' and 'useDigest=true'."
+    },
+    "image": {
+     "type": "string",
+     "minLength": 1,
+     "description": "Image name of the repository from which to pick the version. This is the image name Kargo is subscribed to, and produces Freight for."
+    },
+    "fromOrigin": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "type": "string",
+       "description": "The kind of origin. Currently only 'Warehouse' is supported. Required.",
+       "enum": [
+        "Warehouse"
+       ]
+      },
+      "name": {
+       "type": "string",
+       "description": "The name of the origin. Required.",
+       "minLength": 1
+      }
+     }
+    },
+    "name": {
+     "type": "string",
+     "description": "Name of the image (as defined in the Kustomization file)."
+    },
+    "newName": {
+     "type": "string",
+     "description": "NewName for the image. This can be used to rename the container image name in the manifests."
+    },
+    "tag": {
+     "type": "string",
+     "description": "Tag of the image to set in the Kustomization file. Mutually exclusive with 'digest' and 'useDigest=true'."
+    },
+    "useDigest": {
+     "type": "boolean",
+     "description": "UseDigest specifies whether to use the digest of the image instead of the tag."
+    }
+   }
+  }
+ }
+}
