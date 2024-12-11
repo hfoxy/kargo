@@ -28,10 +28,10 @@ jobs:
     - name: Determine which repository to use for images
       id: repo
       run: |
-        REPO=ghcr.io/akuity/kargo
+        REPO=ghcr.io/hfoxy/kargo
         if ${{ github.event_name != 'release' }}
         then
-          REPO=ghcr.io/akuity/kargo-unstable
+          REPO=ghcr.io/hfoxy/kargo-unstable
         fi
         echo "Repository is set to: $REPO"
         echo "repo=$REPO" >> $GITHUB_OUTPUT
@@ -43,8 +43,8 @@ jobs:
       id: unstable-version
       run: |
         set -xue
-        # Once Kargo goes to v2, we need to replace github.com/akuity/kargo with github.com/akuity/kargo/v2 on the next line
-        LATEST_VERSION=$(go list -m -versions github.com/akuity/kargo | awk '{print $NF}' | awk -F "." '{print $1"."$2".0"}')
+        # Once Kargo goes to v2, we need to replace github.com/hfoxy/kargo with github.com/hfoxy/kargo/v2 on the next line
+        LATEST_VERSION=$(go list -m -versions github.com/hfoxy/kargo | awk '{print $NF}' | awk -F "." '{print $1"."$2".0"}')
         NEW_VERSION=$(awk 'BEGIN {FS=OFS="."} {$2++; print}' <<< "${LATEST_VERSION}")
         echo "unstable-version=${NEW_VERSION}-unstable-$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
     - name: Set up QEMU
@@ -132,10 +132,10 @@ jobs:
     - name: Determine which repository to use
       id: chart_repo
       run: |
-        REPO=ghcr.io/akuity/kargo-charts
+        REPO=ghcr.io/hfoxy/kargo-charts
         if ${{ github.event_name != 'release' }}
         then
-        REPO=ghcr.io/akuity/kargo-charts-unstable
+        REPO=ghcr.io/hfoxy/kargo-charts-unstable
         fi
         echo "Repository is set to: $REPO"
         echo "chart_repo=$REPO" >> $GITHUB_OUTPUT
