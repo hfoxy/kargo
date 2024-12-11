@@ -1,6 +1,7 @@
 package directives
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -80,13 +81,25 @@ func (k *kustomizePatch) runPromotionStep(
 			fmt.Errorf("could not discover kustomization file: %w", err)
 	}
 
-	targetPatch, commitMsg, err := k.buildTargetPatchFromConfig(ctx, stepCtx, cfg)
+	// Read the Kustomization file, and unmarshal it.
+	node, err := readKustomizationFile(kusPath)
+	if err != nil {
+		return PromotionStepResult{Status: kargoapi.PromotionPhaseErrored}, err
+	}
+
+	// Decode the Kustomization file into a typed object to work with.
+	currentPatches, err := getCurrentPatches(node)
+	if err != nil {
+		return PromotionStepResult{Status: kargoapi.PromotionPhaseErrored}, err
+	}
+
+	newPatches, commitMsg, err := k.addPatches(ctx, stepCtx, cfg, currentPatches)
 	if err != nil {
 		return PromotionStepResult{Status: kargoapi.PromotionPhaseErrored}, err
 	}
 
 	// Update the Kustomization file with the new images.
-	if err = updateKustomizationFilePatch(kusPath, targetPatch); err != nil {
+	if err = updateKustomizationFilePatch(kusPath, node, newPatches); err != nil {
 		return PromotionStepResult{Status: kargoapi.PromotionPhaseErrored}, err
 	}
 
@@ -100,11 +113,18 @@ func (k *kustomizePatch) runPromotionStep(
 	return result, nil
 }
 
-func (k *kustomizePatch) buildTargetPatchFromConfig(
+type patchStringValue struct {
+	Op    string `json:"op" yaml:"op"`
+	Path  string `json:"path" yaml:"path"`
+	Value string `json:"value" yaml:"value"`
+}
+
+func (k *kustomizePatch) addPatches(
 	ctx context.Context,
 	stepCtx *PromotionStepContext,
 	cfg KustomizePatchConfig,
-) (kustypes.Patch, string, error) {
+	currentPatches []kustypes.Patch,
+) ([]kustypes.Patch, string, error) {
 	img := cfg.Image
 
 	targetImage := kustypes.Image{
@@ -140,7 +160,7 @@ func (k *kustomizePatch) buildTargetPatchFromConfig(
 		)
 
 		if err != nil {
-			return kustypes.Patch{}, "", fmt.Errorf("unable to discover image for %q: %w", img.Image, err)
+			return nil, "", fmt.Errorf("unable to discover image for %q: %w", img.Image, err)
 		}
 
 		targetImage.NewTag = discoveredImage.Tag
@@ -154,16 +174,85 @@ func (k *kustomizePatch) buildTargetPatchFromConfig(
 		Patch:  "",
 	}
 
-	return patch, k.generateCommitMessage(cfg.Path, targetImage), nil
-}
+	patch.Target.Kind = cfg.Kind
+	patch.Target.LabelSelector = cfg.LabelSelector
 
-func (k *kustomizePatch) buildTargetPatchAutomatically(
-	_ context.Context,
-	_ *PromotionStepContext,
-	_ KustomizePatchConfig,
-) (kustypes.Patch, string, error) {
-	err := errors.New("manual configuration required due to ambiguous result")
-	return kustypes.Patch{}, "", err
+	count := 0
+	newPatches := make([]kustypes.Patch, 0, len(currentPatches)+1)
+	for _, p := range currentPatches {
+		if p.Target == nil || p.Target.Kind != cfg.Kind || p.Target.LabelSelector != cfg.LabelSelector {
+			newPatches = append(newPatches, p)
+			continue
+		}
+
+		count++
+		patch = p
+	}
+
+	if count > 0 {
+		return nil, "", fmt.Errorf("multiple patches (%d) matching criteria were found", count)
+	}
+
+	fullTag := cfg.PathToImage != ""
+
+	patches := make([]patchStringValue, 0)
+	if patch.Patch != "" {
+		decoder := yaml.NewDecoder(strings.NewReader(patch.Patch))
+		err := decoder.Decode(&patches)
+		if err != nil {
+			return nil, "", fmt.Errorf("unable to decode patches: %w", err)
+		}
+
+		np := make([]patchStringValue, 0, len(patches))
+		for _, patch := range patches {
+			if patch.Op != "replace" || (fullTag && patch.Path != cfg.PathToImage) || (!fullTag && patch.Path != cfg.PathToRepository && patch.Path != cfg.PathToTag) {
+				np = append(np, patch)
+				continue
+			}
+		}
+	}
+
+	name := targetImage.NewName
+	if name == "" {
+		name = targetImage.Name
+	}
+
+	tag := targetImage.NewTag
+	if cfg.Image.UseDigest {
+		tag = targetImage.Digest
+	}
+
+	if fullTag {
+		patches = append(patches, patchStringValue{
+			Op:    "replace",
+			Path:  cfg.PathToImage,
+			Value: fmt.Sprintf("%s:%s", name, tag),
+		})
+	} else {
+		patches = append(patches, patchStringValue{
+			Op:    "replace",
+			Path:  cfg.PathToRepository,
+			Value: name,
+		}, patchStringValue{
+			Op:    "replace",
+			Path:  cfg.PathToTag,
+			Value: tag,
+		})
+	}
+
+	b := new(bytes.Buffer)
+	enc := yaml.NewEncoder(b)
+
+	err := enc.Encode(patches)
+	if err != nil {
+		return nil, "", fmt.Errorf("unable to encode patches: %w", err)
+	}
+
+	patchStr := string(b.Bytes())
+	patch.Patch = patchStr
+
+	newPatches = append(newPatches, patch)
+	return newPatches, k.generateCommitMessage(cfg.Path, targetImage), nil
 }
 
 func (k *kustomizePatch) generateCommitMessage(path string, image kustypes.Image) string {
@@ -185,24 +274,9 @@ func (k *kustomizePatch) generateCommitMessage(path string, image kustypes.Image
 	return commitMsg.String()
 }
 
-func updateKustomizationFilePatch(kusPath string, patch kustypes.Patch) error {
-	// Read the Kustomization file, and unmarshal it.
-	node, err := readKustomizationFile(kusPath)
-	if err != nil {
-		return err
-	}
-
-	// Decode the Kustomization file into a typed object to work with.
-	currentPatches, err := getCurrentPatches(node)
-	if err != nil {
-		return err
-	}
-
-	// Merge existing images with new images.
-	newImages := mergePatches(currentPatches, patch)
-
+func updateKustomizationFilePatch(kusPath string, node *yaml.Node, newPatches []kustypes.Patch) error {
 	// Update the images field in the Kustomization file.
-	if err = intyaml.UpdateField(node, "patches", newImages); err != nil {
+	if err := intyaml.UpdateField(node, "patches", newPatches); err != nil {
 		return fmt.Errorf("could not update images field in Kustomization file: %w", err)
 	}
 
