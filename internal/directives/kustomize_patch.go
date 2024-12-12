@@ -205,10 +205,15 @@ func (k *kustomizePatch) addPatches(
 
 		np := make([]patchStringValue, 0, len(patches))
 		for _, patch := range patches {
-			if patch.Op != "replace" || (fullTag && patch.Path != cfg.PathToImage) || (!fullTag && patch.Path != cfg.PathToRepository && patch.Path != cfg.PathToTag) {
-				np = append(np, patch)
-				continue
+			if patch.Op == "replace" {
+				if fullTag && patch.Path == cfg.PathToImage {
+					continue
+				} else if !fullTag && (patch.Path == cfg.PathToRepository || patch.Path == cfg.PathToTag) {
+					continue
+				}
 			}
+
+			np = append(np, patch)
 		}
 	}
 
