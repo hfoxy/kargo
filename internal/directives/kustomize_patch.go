@@ -189,7 +189,7 @@ func (k *kustomizePatch) addPatches(
 		patch = p
 	}
 
-	if count > 0 {
+	if count > 1 {
 		return nil, "", fmt.Errorf("multiple patches (%d) matching criteria were found", count)
 	}
 
