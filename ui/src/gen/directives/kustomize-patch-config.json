@@ -4,28 +4,6 @@
  "type": "object",
  "additionalProperties": false,
  "required": ["path", "image", "kind", "labelSelector"],
- "oneOf": [
-  {
-   "required": ["pathToImage"],
-   "properties": {
-    "pathToImage": { "minLength": 1 },
-    "pathToRepository": { "enum": ["", null] },
-    "pathToTag": { "enum": ["", null] },
-    "kind": { "minLength": 1 },
-    "labelSelector": { "minLength": 1 }
-   }
-  },
-  {
-   "required": ["pathToRepository", "pathToTag"],
-   "properties": {
-    "pathToImage": { "enum": ["", null] },
-    "pathToRepository": { "minLength": 1 },
-    "pathToTag": { "minLength": 1 },
-    "kind": { "minLength": 1 },
-    "labelSelector": { "minLength": 1 }
-   }
-  }
- ],
  "properties": {
   "path": {
    "type": "string",
