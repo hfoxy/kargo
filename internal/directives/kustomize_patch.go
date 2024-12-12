@@ -215,6 +215,8 @@ func (k *kustomizePatch) addPatches(
 
 			np = append(np, patch)
 		}
+
+		patches = np
 	}
 
 	name := targetImage.NewName
