@@ -109,6 +109,7 @@ func FindImage(
 	// for, great. If there's more than one, there's ambiguity, and we need to
 	// return an error.
 	if desiredOrigin == nil {
+		var match *kargoapi.Image
 		for i := range freightReqs {
 			requestedFreight := freightReqs[i]
 			warehouse, err := kargoapi.GetWarehouse(
@@ -130,21 +131,6 @@ func FindImage(
 			}
 
 			for _, sub := range warehouse.Spec.Subscriptions {
-				if sub.Image != nil && sub.Image.RepoURL == repoURL && sub.Image.AllowTags == "" {
-					if desiredOrigin != nil {
-						return nil, fmt.Errorf(
-							"multiple requested Freight could potentially provide a container image from "+
-								"repository %s: please provide a Freight origin to disambiguate",
-							repoURL,
-						)
-					}
-
-					desiredOrigin = &requestedFreight.Origin
-				}
-			}
-
-			var match *kargoapi.Image
-			for _, sub := range warehouse.Spec.Subscriptions {
 				if sub.Image != nil && sub.Image.RepoURL == repoURL {
 					var m *kargoapi.Image
 					m, err = findImageFromFreight(desiredOrigin, freight, repoURL, &sub)
@@ -158,11 +144,15 @@ func FindImage(
 								"repository %s: please provide a Freight origin to disambiguate",
 							repoURL,
 						)
+					} else if m != nil {
+						match = m
 					}
-
-					match = m
 				}
 			}
+		}
+
+		if match != nil {
+			return match, nil
 		}
 	} else {
 		i, err := findImageFromFreight(desiredOrigin, freight, repoURL, nil)
@@ -187,7 +177,7 @@ func findImageFromFreight(
 	sub *kargoapi.RepoSubscription,
 ) (*kargoapi.Image, error) {
 	for _, f := range freight {
-		if f.Origin.Equals(desiredOrigin) {
+		if desiredOrigin == nil || f.Origin.Equals(desiredOrigin) {
 			for _, i := range f.Images {
 				if i.RepoURL != repoURL {
 					continue
@@ -197,7 +187,7 @@ func findImageFromFreight(
 						return nil, fmt.Errorf("invalid AllowTags for subscription (%s): %w", sub.Image.AllowTags, err)
 					}
 
-					if !allowTags.MatchString(i.RepoURL) {
+					if !allowTags.MatchString(i.Tag) {
 						continue
 					}
 				}
@@ -207,12 +197,7 @@ func findImageFromFreight(
 		}
 	}
 
-	// If we get to here, we looked at all the FreightReferences and didn't find
-	// any that came from the desired origin. This could be because no Freight
-	// from the desired origin has been promoted yet.
-	return nil, NotFoundError{
-		msg: fmt.Sprintf("image from repo %s not found in referenced Freight", repoURL),
-	}
+	return nil, nil
 }
 
 func HasAmbiguousImageRequest(
