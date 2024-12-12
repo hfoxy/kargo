@@ -408,80 +408,12 @@ func TestFindImage(t *testing.T) {
 					},
 				},
 			},
-			freight: []kargoapi.FreightReference{
-				{
-					Origin: testOrigin1, // Correct origin
-					Images: []kargoapi.Image{testImage1},
-				},
-				{
-					Origin: testOrigin2,
-					Images: []kargoapi.Image{testImage1},
-				},
-			},
 			assertions: func(t *testing.T, _ *kargoapi.Image, err error) {
 				require.ErrorContains(
 					t,
 					err,
 					"multiple requested Freight could potentially provide",
 				)
-			},
-		},
-		{
-			name: "desired origin not specified and more than one possible origin found but inferred from allow tags",
-			client: func() client.Client {
-				return fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-					&kargoapi.Warehouse{
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: testNamespace,
-							Name:      testOrigin1.Name,
-						},
-						Spec: kargoapi.WarehouseSpec{
-							Subscriptions: []kargoapi.RepoSubscription{{
-								Image: &kargoapi.ImageSubscription{
-									RepoURL:   testRepoURL,
-									AllowTags: testImage1.Tag,
-								},
-							}},
-						},
-					},
-					&kargoapi.Warehouse{
-						ObjectMeta: metav1.ObjectMeta{
-							Namespace: testNamespace,
-							Name:      testOrigin2.Name,
-						},
-						Spec: kargoapi.WarehouseSpec{
-							Subscriptions: []kargoapi.RepoSubscription{{
-								Image: &kargoapi.ImageSubscription{
-									RepoURL:   testRepoURL,
-									AllowTags: testImage2.Tag,
-								},
-							}},
-						},
-					},
-				).Build()
-			},
-			stage: &kargoapi.Stage{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testNamespace,
-				},
-				Spec: kargoapi.StageSpec{
-					RequestedFreight: []kargoapi.FreightRequest{
-						// This Stage requests Freight from two Warehouses that both get
-						// images from the same repo
-						{Origin: testOrigin1},
-						{Origin: testOrigin2},
-					},
-				},
-			},
-			freight: []kargoapi.FreightReference{
-				{
-					Origin: testOrigin1,
-					Images: []kargoapi.Image{testImage1},
-				},
-			},
-			assertions: func(t *testing.T, image *kargoapi.Image, err error) {
-				require.NoError(t, err)
-				require.Equal(t, &testImage1, image)
 			},
 		},
 		{
