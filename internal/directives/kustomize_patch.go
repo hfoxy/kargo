@@ -35,13 +35,13 @@ type kustomizePatch struct {
 // interface that sets images in a Kustomization file.
 func newKustomizePatch() PromotionStepRunner {
 	return &kustomizePatch{
-		schemaLoader: getConfigSchemaLoader("kustomize-set-image"),
+		schemaLoader: getConfigSchemaLoader("kustomize-patch"),
 	}
 }
 
 // Name implements the PromotionStepRunner interface.
 func (k *kustomizePatch) Name() string {
-	return "kustomize-set-image"
+	return "kustomize-patch"
 }
 
 // RunPromotionStep implements the PromotionStepRunner interface.
