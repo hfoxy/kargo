@@ -3,12 +3,11 @@ package freight
 import (
 	"context"
 	"fmt"
-
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	kargoapi "github.com/akuity/kargo/api/v1alpha1"
 	libGit "github.com/akuity/kargo/internal/git"
+	"k8s.io/apimachinery/pkg/types"
+	"regexp"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type NotFoundError struct {
@@ -129,8 +128,9 @@ func FindImage(
 					requestedFreight.Origin.Name, project,
 				)
 			}
+
 			for _, sub := range warehouse.Spec.Subscriptions {
-				if sub.Image != nil && sub.Image.RepoURL == repoURL {
+				if sub.Image != nil && sub.Image.RepoURL == repoURL && sub.Image.AllowTags == "" {
 					if desiredOrigin != nil {
 						return nil, fmt.Errorf(
 							"multiple requested Freight could potentially provide a container image from "+
@@ -138,28 +138,75 @@ func FindImage(
 							repoURL,
 						)
 					}
+
 					desiredOrigin = &requestedFreight.Origin
 				}
 			}
-		}
-	}
-	if desiredOrigin == nil {
-		// There is no chance of finding the commit we're looking for. Just return
-		// nil and let the caller decide what to do.
-		return nil, NotFoundError{
-			msg: fmt.Sprintf("image from repo %s not found in referenced Freight", repoURL),
-		}
-	}
-	// We know exactly what we're after, so this should be easy
-	for _, f := range freight {
-		if f.Origin.Equals(desiredOrigin) {
-			for _, i := range f.Images {
-				if i.RepoURL == repoURL {
-					return &i, nil
+
+			var match *kargoapi.Image
+			for _, sub := range warehouse.Spec.Subscriptions {
+				if sub.Image != nil && sub.Image.RepoURL == repoURL {
+					var m *kargoapi.Image
+					m, err = findImageFromFreight(desiredOrigin, freight, repoURL, &sub)
+					if err != nil {
+						return nil, err
+					}
+
+					if m != nil && match != nil {
+						return nil, fmt.Errorf(
+							"multiple requested Freight could potentially provide a container image from "+
+								"repository %s: please provide a Freight origin to disambiguate",
+							repoURL,
+						)
+					}
+
+					match = m
 				}
 			}
 		}
+	} else {
+		i, err := findImageFromFreight(desiredOrigin, freight, repoURL, nil)
+		if err != nil {
+			return nil, err
+		} else if i != nil {
+			return i, nil
+		}
 	}
+
+	// There is no chance of finding the commit we're looking for. Just return
+	// nil and let the caller decide what to do.
+	return nil, NotFoundError{
+		msg: fmt.Sprintf("image from repo %s not found in referenced Freight", repoURL),
+	}
+}
+
+func findImageFromFreight(
+	desiredOrigin *kargoapi.FreightOrigin,
+	freight []kargoapi.FreightReference,
+	repoURL string,
+	sub *kargoapi.RepoSubscription,
+) (*kargoapi.Image, error) {
+	for _, f := range freight {
+		if f.Origin.Equals(desiredOrigin) {
+			for _, i := range f.Images {
+				if i.RepoURL != repoURL {
+					continue
+				} else if sub != nil && sub.Image.AllowTags != "" {
+					allowTags, err := regexp.Compile(sub.Image.AllowTags)
+					if err != nil {
+						return nil, fmt.Errorf("invalid AllowTags for subscription (%s): %w", sub.Image.AllowTags, err)
+					}
+
+					if !allowTags.MatchString(i.RepoURL) {
+						continue
+					}
+				}
+
+				return &i, nil
+			}
+		}
+	}
+
 	// If we get to here, we looked at all the FreightReferences and didn't find
 	// any that came from the desired origin. This could be because no Freight
 	// from the desired origin has been promoted yet.
