@@ -124,7 +124,7 @@ type GitSubscription struct {
 	// subscription is implicitly to the repository's default branch.
 	//
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:Pattern=`^\w+([-/]\w+)*$`
+	// +kubebuilder:validation:Pattern=`^\w+([-/\.]\w+)*$`
 	Branch string `json:"branch,omitempty" protobuf:"bytes,3,opt,name=branch"`
 	// StrictSemvers specifies whether only "strict" semver tags should be
 	// considered. A "strict" semver tag is one containing ALL of major, minor,
@@ -249,7 +249,7 @@ type ImageSubscription struct {
 	// constraints, which means the latest semantically tagged version of an image
 	// will always be used. Care should be taken with leaving this field
 	// unspecified, as it can lead to the unanticipated rollout of breaking
-	// changes. Refer to Image Updater documentation for more details.
+	// changes.
 	// More info: https://github.com/masterminds/semver#checking-version-constraints
 	//
 	// +kubebuilder:validation:Optional

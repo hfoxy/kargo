@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -112,29 +113,84 @@ func (e *SimpleEngine) executeSteps(
 
 		// Execute the step
 		result, err := e.executeStep(ctx, promoCtx, step, reg, workDir, state)
-		if err != nil {
-			// Let a hard error take precedence over the result status and message.
-			stepExecMeta.Status = kargoapi.PromotionPhaseErrored
-			stepExecMeta.Message = err.Error()
-		} else {
-			stepExecMeta.Status = result.Status
-			stepExecMeta.Message = result.Message
-		}
-		state[step.Alias] = result.Output
+		stepExecMeta.Status = result.Status
+		stepExecMeta.Message = result.Message
 
-		if stepExecMeta.Status == kargoapi.PromotionPhaseSucceeded {
+		// TODO(hidde): until we have a better way to handle the output of steps
+		// inflated from tasks, we need to apply a special treatment to the output
+		// to allow it to become available under the alias of the "task".
+		aliasNamespace := getAliasNamespace(step.Alias)
+		if aliasNamespace != "" && reg.Runner.Name() == (&outputComposer{}).Name() {
+			if state[aliasNamespace] == nil {
+				state[aliasNamespace] = make(map[string]any)
+			}
+			for k, v := range result.Output {
+				state[aliasNamespace].(map[string]any)[k] = v // nolint: forcetypeassert
+			}
+		} else {
+			state[step.Alias] = result.Output
+		}
+
+		switch result.Status {
+		case kargoapi.PromotionPhaseErrored, kargoapi.PromotionPhaseFailed,
+			kargoapi.PromotionPhaseRunning, kargoapi.PromotionPhaseSucceeded:
+		default:
+			// Deal with statuses that no step should have returned.
+			stepExecMeta.FinishedAt = ptr.To(metav1.Now())
+			return PromotionResult{
+				Status:                kargoapi.PromotionPhaseErrored,
+				CurrentStep:           i,
+				StepExecutionMetadata: stepExecMetas,
+				State:                 state,
+				HealthCheckSteps:      healthChecks,
+			}, fmt.Errorf("step %d returned an invalid status", i)
+		}
+
+		// Reconcile status and err...
+		if err != nil {
+			if stepExecMeta.Status != kargoapi.PromotionPhaseFailed {
+				// All states other than Errored and Failed should be mutually exclusive
+				// with a hard error. If we got to here, a step has violated this
+				// assumption. We will prioritize the error over the status and change
+				// the status to Errored.
+				stepExecMeta.Status = kargoapi.PromotionPhaseErrored
+			}
+			// Let the hard error take precedence over the message.
+			stepExecMeta.Message = err.Error()
+		} else if result.Status == kargoapi.PromotionPhaseErrored {
+			// A nil err should be mutually exclusive with an Errored status. If we
+			// got to here, a step has violated this assumption. We will prioritize
+			// the Errored status over the nil error and create an error.
+			message := stepExecMeta.Message
+			if message == "" {
+				message = "no details provided"
+			}
+			err = fmt.Errorf("step %d errored: %s", i, message)
+		}
+
+		// At this point, we've sorted out any discrepancies between the status and
+		// err.
+
+		switch {
+		case stepExecMeta.Status == kargoapi.PromotionPhaseSucceeded:
+			// Best case scenario: The step succeeded.
 			stepExecMeta.FinishedAt = ptr.To(metav1.Now())
 			if healthCheck := result.HealthCheckStep; healthCheck != nil {
 				healthChecks = append(healthChecks, *healthCheck)
 			}
 			continue // Move on to the next step
-		}
-
-		// Treat errors and logical failures the same for now.
-		// TODO(krancour): In the future, we should fail without retry for logical
-		// failures and unrecoverable errors and retry only those errors with a
-		// chance of recovery.
-		if stepExecMeta.Status != kargoapi.PromotionPhaseRunning {
+		case isTerminal(err):
+			// This is an unrecoverable error.
+			stepExecMeta.FinishedAt = ptr.To(metav1.Now())
+			return PromotionResult{
+				Status:                stepExecMeta.Status,
+				CurrentStep:           i,
+				StepExecutionMetadata: stepExecMetas,
+				State:                 state,
+				HealthCheckSteps:      healthChecks,
+			}, fmt.Errorf("an unrecoverable error occurred: %w", err)
+		case err != nil:
+			// If we get to here, the error is POTENTIALLY recoverable.
 			stepExecMeta.ErrorCount++
 			// Check if the error threshold has been met.
 			errorThreshold := step.GetErrorThreshold(reg.Runner)
@@ -154,8 +210,8 @@ func (e *SimpleEngine) executeSteps(
 			}
 		}
 
-		// If we get to here, the step is either running (waiting for some external
-		// condition to be met) or it errored/failed but did not meet the error
+		// If we get to here, the step is either Running (waiting for some external
+		// condition to be met) or it Errored/Failed but did not meet the error
 		// threshold. Now we need to check if the timeout has elapsed. A nil timeout
 		// or any non-positive timeout interval are treated as NO timeout, although
 		// a nil timeout really shouldn't happen.
@@ -172,8 +228,8 @@ func (e *SimpleEngine) executeSteps(
 			}, fmt.Errorf("step %d timeout of %s has elapsed", i, timeout.String())
 		}
 
-		if stepExecMeta.Status != kargoapi.PromotionPhaseRunning {
-			// Treat the error/failure as if the step is still running so that the
+		if err != nil {
+			// Treat Errored/Failed as if the step is still running so that the
 			// Promotion will be requeued. The step will be retried on the next
 			// reconciliation.
 			stepExecMeta.Message += "; step will be retried"
@@ -186,7 +242,7 @@ func (e *SimpleEngine) executeSteps(
 			}, nil
 		}
 
-		// If we get to here, the step is still running (waiting for some external
+		// If we get to here, the step is still Running (waiting for some external
 		// condition to be met).
 		stepExecMeta.ErrorCount = 0 // Reset the error count
 		return PromotionResult{
@@ -311,16 +367,40 @@ func (e *SimpleEngine) getProjectSecrets(
 	ctx context.Context,
 	project string,
 ) (map[string]map[string]string, error) {
-	secrets := corev1.SecretList{}
+	secretList := corev1.SecretList{}
 	if err := e.kargoClient.List(
 		ctx,
-		&secrets,
+		&secretList,
 		client.InNamespace(project),
+		client.MatchingLabels{
+			// Newer label
+			kargoapi.CredentialTypeLabelKey: kargoapi.CredentialTypeLabelGeneric,
+		},
 	); err != nil {
 		return nil, fmt.Errorf("error listing Secrets for Project %q: %w", project, err)
 	}
-	secretsMap := make(map[string]map[string]string, len(secrets.Items))
-	for _, secret := range secrets.Items {
+	secrets := secretList.Items
+	if err := e.kargoClient.List(
+		ctx,
+		&secretList,
+		client.InNamespace(project),
+		client.MatchingLabels{
+			// Legacy label
+			kargoapi.ProjectSecretLabelKey: kargoapi.LabelTrueValue,
+		},
+	); err != nil {
+		return nil, fmt.Errorf("error listing Secrets for Project %q: %w", project, err)
+	}
+	secrets = append(secrets, secretList.Items...)
+	// Sort and de-dupe
+	slices.SortFunc(secrets, func(lhs, rhs corev1.Secret) int {
+		return strings.Compare(lhs.Name, rhs.Name)
+	})
+	secrets = slices.CompactFunc(secrets, func(lhs, rhs corev1.Secret) bool {
+		return lhs.Name == rhs.Name
+	})
+	secretsMap := make(map[string]map[string]string, len(secrets))
+	for _, secret := range secrets {
 		secretsMap[secret.Name] = make(map[string]string, len(secret.Data))
 		for key, value := range secret.Data {
 			secretsMap[secret.Name][key] = string(value)
