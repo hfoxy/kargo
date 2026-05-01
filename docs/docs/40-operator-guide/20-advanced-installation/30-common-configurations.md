@@ -8,14 +8,18 @@ This document outlines common advanced installation scenarios and
 configurations for Kargo. 
 
 :::info
+
 For complete parameter documentation, refer to the
 [chart documentation](https://github.com/akuity/kargo/blob/main/charts/kargo/README.md).
+
 :::
 
 :::info
+
 For more information on how to apply these configurations, see the
 advanced installation guides for [Helm](10-advanced-with-helm.md) and
 [Argo CD](20-advanced-with-argocd.md).
+
 :::
 
 ## Standard Kubernetes Configuration
@@ -41,9 +45,11 @@ controller:
 ```
 
 :::note
+
 For a full list of supported configurations, refer to the
 [Global Parameters](https://github.com/akuity/kargo/blob/main/charts/kargo/README.md#global-parameters)
 or the component-specific parameter sections in the chart documentation.
+
 :::
 
 ## API Configuration
@@ -53,10 +59,12 @@ installation time. These configurations are used to control the behavior of
 Kargo's API server and its web-based user interface.
 
 :::info
+
 The sections below outline common configurations for the API server. For a full
 list of supported configurations, refer to the
 [API Parameters](https://github.com/akuity/kargo/blob/main/charts/kargo/README.md#api).
 section in the chart documentation.
+
 :::
 
 ### API Host
@@ -74,9 +82,11 @@ api:
 ```
 
 :::note
+
 The host is allowed to include a port number, e.g. `kargo.example.com:8080`,
 but should not include a protocol (e.g. `http://` or `https://`) as this is
 automatically inferred from other configuration options.
+
 :::
 
 ### API Service
@@ -86,15 +96,19 @@ type `ClusterIP`, which is only accessible within the cluster or through
 [port forwarding](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/).
 
 :::caution
+
 Changing the API server service type can expose the API server to the internet
 in an insecure manner. Refer to the
 [Secure Configuration](../40-security/10-secure-configuration.md) section for
 more information on securing the API server.
+
 :::
 
 :::info
+
 Instead of making use of a `Service` resource, you can also expose the API
 server using an [`Ingress` resource](#api-ingress).
+
 :::
 
 If you want to expose the API server to the internet, but do not want to make
@@ -122,8 +136,10 @@ By default, Kargo will enable TLS directly on the API server using a
 self-signed certificate issued by [cert-manager](https://cert-manager.io/).
 
 :::note
+
 When making use of the self-signed certificate option, cert-manager must be
 installed in the cluster.
+
 :::
 
 To supply your own certificate, set the following configuration:
@@ -158,16 +174,20 @@ api:
 ```
 
 :::info
+
 If you exercise any of the chart's built-in TLS configuration options,
 setting `terminatedUpstream` is never required.
+
 :::
 
 ### API Ingress
 
 :::info
+
 Instead of making use of an `Ingress` resource, you can also expose the API
 server using a `LoadBalancer` or `NodePort` service type. Refer to the
 [API Service](#api-service) section for more information.
+
 :::
 
 By default, Kargo will not create an `Ingress` resource for the API server
@@ -176,10 +196,12 @@ and will only be accessible within the cluster or through the API server's
 an `Ingress` resource can be created.
 
 :::caution
+
 Enabling the API server Ingress without proper configuration can expose the API
 server to the internet in an insecure manner. Refer to the
 [Secure Configuration](../40-security/10-secure-configuration.md) section for
 more information on securing the API server.
+
 :::
 
 To configure the API server to use an `Ingress` resource, set the following
@@ -195,11 +217,13 @@ api:
 #### Ingress TLS
 
 By default, Kargo will enable TLS on the `Ingress` resource using a self-signed
-certificate using [cert-manager](https://cert-manager.io). 
+certificate using [cert-manager](https://cert-manager.io).
 
 :::note
+
 When making use of the self-signed certificate option, cert-manager must be
 installed in the cluster.
+
 :::
 
 To supply your own certificate, set the following configuration:
@@ -262,9 +286,155 @@ controller:
 ```
 
 :::note
+
 When using a signing key, the `gitClient.name` and `gitClient.email`
 configuration options must match the name and email associated with the GPG
 key.
+
+:::
+
+### Git Client Configuration
+
+As an alternative to configuring the Git client at install time via the Helm
+chart, the same settings -- committer identity and signing key -- can be
+configured at runtime through the `ClusterConfig` resource. This is especially
+useful for managed environments where the Helm values are not directly
+controlled by the Kargo operator.
+
+When configured, `ClusterConfig` settings take precedence over the
+Helm-provisioned defaults.
+
+**Step 1: Create a Secret**
+
+Create a system-level Secret (via the Settings page's **System Secrets** tab,
+the CLI, or `kubectl`) containing the GPG signing key:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-gpg-key
+  namespace: <system-resources-namespace>
+type: Opaque
+data:
+  signingKey: <base64-encoded-ascii-armored-gpg-key>
+```
+
+**Step 2: Reference it from ClusterConfig**
+
+Edit the `ClusterConfig` resource (via the Settings page's **Cluster Config**
+tab or `kubectl`) to reference the Secret:
+
+```yaml
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ClusterConfig
+metadata:
+  name: cluster
+spec:
+  gitClient:
+    name: Kargo
+    email: no-reply@kargo.io
+    signingKeySecret:
+      name: my-gpg-key
+```
+
+The next promotion that clones a Git repository will pick up the new
+configuration automatically -- no restart is required.
+
+:::note
+
+When using a signing key, the `gitClient.name` and `gitClient.email` values
+must match the name and email associated with the GPG key.
+
+:::
+
+### Push Integration Policy
+
+When the [`git-push`](../../50-user-guide/60-reference-docs/30-promotion-steps/git-push.md)
+promotion step pushes to a remote branch that has new commits the local branch
+doesn't have, it must integrate those remote changes first. The push integration
+policy controls how this integration is performed.
+
+Four options are available, forming a spectrum from least to most conservative:
+
+- `AlwaysRebase`: Unconditionally uses `pull --rebase` to integrate remote
+  changes. This preserves linear history but may re-sign commits that Kargo did
+  not author or strip existing signatures from commits.
+
+- `RebaseOrMerge`: Uses `pull --rebase` when a signature-trust analysis
+  determines it is safe, and falls back to a merge commit otherwise. This
+  preserves linear history when possible without undermining trust.
+
+- `RebaseOrFail`: Uses `pull --rebase` when the signature-trust analysis
+  determines it is safe, and fails the push step otherwise. This puts
+  constraints on promotion process design and treats the failure scenario as
+  worthy of human investigation.
+
+- `AlwaysMerge`: Unconditionally creates a merge commit to integrate remote
+  changes. This is the most conservative option — it never touches existing
+  commits and always preserves original signatures.
+
+:::caution
+
+The current default is `AlwaysRebase`.
+
+Starting with v1.12.0, the default will change to `RebaseOrMerge`. If you rely
+on the current behavior, set the policy explicitly before upgrading.
+
+:::
+
+```yaml
+controller:
+  gitClient:
+    pushIntegrationPolicy: RebaseOrMerge
+```
+
+:::info
+
+For more information about the security implications of this setting, see
+[Secure Configuration](../40-security/10-secure-configuration.md#push-integration-policy).
+
+:::
+
+### GitHub Push Settings
+
+The [`github-push`](../../50-user-guide/60-reference-docs/30-promotion-steps/github-push.md)
+promotion step has two system-level settings:
+
+#### Maximum Revisions
+
+The maximum number of commits that `github-push` will replay via the GitHub API
+in a single push. This is a safety guardrail against accidentally replaying
+large numbers of commits, which would consume API rate limit budget.
+
+The default is 10.
+
+```yaml
+controller:
+  githubPush:
+    maxRevisions: 20
+```
+
+#### Verify Untrusted Commits
+
+By default, `github-push` only withholds author/committer information (which
+results in a verified commit) for commits signed by a trusted key. When this
+option is enabled, author/committer information is withheld for __all__ commits,
+causing GitHub to sign every commit regardless of trust.
+
+```yaml
+controller:
+  githubPush:
+    verifyUntrustedCommits: true
+```
+
+:::warning
+
+This option manufactures trust where none exists. It tells GitHub to vouch for
+commits that Kargo cannot independently verify. Enable this only if your
+organization values the verified badge for policy compliance and accepts that
+verification no longer reflects genuine cryptographic trust.
+
 :::
 
 ## Argo CD Configuration
@@ -288,10 +458,12 @@ When disabled, the controller will not watch Argo CD `Application` resources
 and disable Argo CD specific features.
 
 :::info
+
 If the integration is enabled without Argo CD installed, the controller will
 disable the Argo CD specific features on boot. Explicitly disabling is preferred
 if this integration is not desired, as it will grant fewer permissions to the
 controller.
+
 :::
 
 ### Argo CD Namespace
@@ -328,14 +500,17 @@ namespace specified by `controller.argocd.namespace`.
 ### Disabling the Argo Rollouts Integration
 
 By default, Kargo will enable the Argo Rollouts integration, which configures
-Kargo to work with `Rollout` resources created by Argo Rollouts as part of the
-[verification feature](../../50-user-guide/20-how-to-guides/14-working-with-stages.md#verifications).
+Kargo to work with `AnalysisRun` resources created as part of the
+[verification feature](../../50-user-guide/20-how-to-guides/40-working-with-stages.md#verification).
 
 This can be disabled as follows:
 
 ```yaml
+api:
+  rollouts:
+    integrationEnabled: false
 controller:
-  argoRollouts:
+  rollouts:
     integrationEnabled: false
 ```
 
@@ -343,13 +518,112 @@ When disabled, the controller will not reconcile Argo Rollouts `AnalysisRun`
 resources and attempts to verify Stages via `Analysis` will fail.
 
 :::info
+
 If the integration is enabled without Argo Rollouts installed, the controller
 will disable the Argo Rollouts specific features on boot. Explicitly disabling
 is preferred if this integration is not desired, as it will grant fewer
 permissions to the controller.
+
 :::
 
-## Resource Management
+### Logs from Job Metrics
+
+For those utilizing Argo Rollouts integration for verifications,
+[job metrics](https://argoproj.github.io/argo-rollouts/analysis/job/) stand out
+as an especially useful feature because they are implemented as Kubernetes
+[`Job`s](https://kubernetes.io/docs/concepts/workloads/controllers/job/), which
+give users the flexibility to define any arbitrary post-promotion tests they'd
+like to run against a `Stage` by simply providing appropriate `Job` specs
+[as described here](../../50-user-guide/20-how-to-guides/60-verification.md#configuring-analysistemplates).
+In cases such as these, access to logs produced by the `Job`'s underlying `Pod`
+is helpful for debugging purposes and for understanding results.
+
+Since it's common for multiple Kargo controllers to be deployed to many
+different clusters, such logs need to be aggregated in a centralized location
+for the API server to access them and, in-turn, stream them to the Kargo UI or
+CLI. Rather than build support for many different logging stacks, Kargo has
+settled on a "lowest common denominator" approach: The API server can stream
+any logs that it can access via an HTTP GET request.
+
+To facilitate this, operators may, at the time of installation, provide a URL
+template that the API server can use to construct the URL for any job metric logs
+as a function of `project` (name), `namespace` (always equal to the `Project`'s
+name), `shard`, `stage` (name), `analysisRun` (name), `metricName`,
+`jobNamespace`, `jobName`, and `container` (name).
+
+A token can be specified by referencing a Kubernetes `Secret` that is managed
+"out of band." HTTP headers may also be specified, and may reference the token
+if one is provided.
+
+Example:
+
+```yaml
+api:
+  rollouts:
+    integrationEnabled: true
+    logs:
+      enabled: true
+      urlTemplate: https://logs.kargo.example.com/${{project}}/${{analysisRun}}/${{jobName}}/${{container}}
+      tokenSecret:
+        name: kargo-logs-token
+        key: token
+      httpHeaders:
+        Authentication: "Bearer ${{ token }}"
+```
+
+:::note
+
+This "lowest common denominator" approach to streaming job metric logs does
+leave it as an exercise for the Kargo administrator to arrange for the
+forwarding and storage of applicable logs.
+
+Users of Kargo via the [Akuity Platform](https://akuity.io/akuity-platform),
+however, will have this seamlessly handled for them.
+
+:::
+
+:::note
+
+For more information, refer to the
+[chart documentation](https://github.com/akuity/kargo/blob/main/charts/kargo/README.md).
+
+:::
+
+## Warehouse Performance
+
+### Tuning Reconciliation Intervals
+
+If your cluster contains many `Warehouse` resources, which periodically poll
+artifact repositories, or if developers have
+[configured any of those `Warehouse`s poorly](../../50-user-guide/20-how-to-guides/30-working-with-warehouses.md#performance-considerations),
+you may wish to reduce the frequency with which all `Warehouse`s execute their
+artifact discovery processes (i.e. You may wish to _increase_ the minimum
+polling interval.)
+
+:::info
+
+Developers can tune this interval on individual `Warehouse` resources, but the
+effective interval for any `Warehouse` will be the _greater_ of any specified
+there and the minimum specified here. i.e. Developers cannot configure a
+`Warehouse`'s artifact discovery process to run more frequently than you permit.
+
+:::
+
+:::note
+
+If you do this, you will increase the average time required for every
+`Warehouse` to notice new artifacts. You can compensate for this by configuring
+`Warehouse` artifact discovery processes to be
+[triggered by webhooks](../35-cluster-configuration.md#triggering-artifact-discovery-using-webhooks).
+
+:::
+
+```yaml
+controller:
+  reconcilers:
+    warehouses:
+      minReconciliationInterval: 15m
+```
 
 ### Tuning Concurrent Reconciliation Limits
 
@@ -371,9 +645,76 @@ controller:
 ```
 
 :::note
+
 For a list of resource kinds that can be configured, refer to the
 [chart documentation](https://github.com/akuity/kargo/blob/main/charts/kargo/README.md).
+
 :::
+
+### Image Metadata Caching
+
+Kargo can cache container image metadata more aggressively using image tags as
+keys (instead of digests). This can significantly improve performance by
+reducing API calls to container image registries, but is safest to do when
+images are known to use "immutable" tags (i.e. existing tags are never
+overwritten).
+
+Operators may select one of four policies regarding caching image metadata by
+tag:
+
+- `Forbid`: Container image subscriptions may not cache image metadata by tag.
+  This is silently enforced. Subscriptions that opt into caching image metadata
+  by tag will be treated as if they had not.
+
+- `Allow` Individual container image subscriptions may choose whether to cache
+  image metadata by tag. This option leaves the decision in the hands of
+  developers.
+
+  :::info
+
+  For purposes of backwards compatibility, `Allow` is the default policy.
+
+  :::
+
+- `Require`: Container image subscriptions MUST explicitly opt into caching
+  image metadata by tag or their artifact discovery processes will fail.
+  Requiring explicit opt-in is tantamount to soliciting acknowledgement from
+  developers that caching image metadata by tag is in effect. This is intended
+  to minimize the possibility of surprise at any stale results from an image
+  discovery process. This option sacrifices some small degree of usability for
+  safety.
+
+- `Force`: Caching image metadata is silently enforced. Subscriptions that to
+  not opt into caching image metadata by tag will be treated as if they had.
+
+  :::info
+
+  This is the recommended policy in an immutable-tags-only environment.
+
+  :::
+
+Example configuration to allow (but not require) individual container image
+subscriptions to cache image metadata by tag:
+
+```yaml
+controller:
+  images:
+    cache:
+      cacheByTagPolicy: Allow
+```
+
+Example configuration to silently enforce caching image metadata by tag:
+
+```yaml
+controller:
+  images:
+    cache:
+      cacheByTagPolicy: Force
+```
+
+For more information on how to use this feature, see the
+[Performance Considerations](../../50-user-guide/20-how-to-guides/30-working-with-warehouses.md#caching-image-metadata-by-tag)
+section of the user guide.
 
 ## Garbage Collection
 
@@ -392,10 +733,12 @@ garbageCollector:
 ```
 
 :::caution
+
 Disabling the garbage collector will result in old `Freight` and `Promotion`
 resources accumulating in the cluster. This can lead to increased resource
 usage and potential performance issues. Therefore, this is typically not
 recommended and should only be done with caution.
+
 :::
 
 ### Scheduling the Garbage Collection
@@ -410,33 +753,61 @@ garbageCollector:
 
 ### Retention Settings
 
-The garbage collector offers a number of settings to control the retention of
-`Freight` and `Promotion` resources. The following settings are available:
+The garbage collector offers settings to control the retention of `Promotion` and
+`Freight` resources.
+
+#### Promotion Retention
+
+For each `Stage`, the garbage collector identifies the oldest `Promotion` that
+is still in a non-terminal phase (i.e., not `Succeeded` or `Failed`). It then
+retains up to `maxRetainedPromotions` that are _older_ than this non-terminal
+`Promotion`. Any `Promotion` resources beyond this retention limit are eligible
+for deletion, but will only be deleted if they have reached the
+`minPromotionDeletionAge`. This means the actual number of retained `Promotion`
+resources may exceed `maxRetainedPromotions` if some would-be-deleted
+`Promotion` resources have not yet reached the minimum age. If all `Promotion`
+resources for a `Stage` are in a terminal phase, the garbage collector simply
+retains the most recent `maxRetainedPromotions` and considers the rest for
+deletion (subject to the minimum age criterion).
+
+#### Freight Retention
+
+For each `Warehouse`, the garbage collector identifies the oldest `Freight` that
+is still in use by any `Stage`. It then retains up to `maxRetainedFreight` that
+are _older_ than this in-use `Freight`. Any `Freight` resources beyond this
+retention limit are eligible for deletion, but will only be deleted if they have
+reached the `minFreightDeletionAge`. This means the actual number of retained
+`Freight` resources may exceed `maxRetainedFreight` if some would-be-deleted
+`Freight` resources have not yet reached the minimum age. If no `Freight` from a
+`Warehouse` is currently in use, the garbage collector simply retains the most
+recent `maxRetainedFreight` and considers the rest for deletion (subject to the
+minimum age criterion).
 
 ```yaml
 garbageCollector:
-  # The minimum age a Promotion resource must be before it can be deleted.
-  # This is a duration string (e.g. 336h for 14 days).
+  # The minimum age a Promotion must be before considered eligible for garbage
+  # collection. This is a duration string (e.g. 336h for 14 days).
   minPromotionDeletionAge: 336h
-  # The number of Promotion resources for each Stage to retain that are older
-  # than the minimum deletion age. I.e., if a Stage has 30 Promotions older
-  # than minPromotionDeletionAge, only the 20 most recent will be retained.
+  # The ideal maximum number of Promotions OLDER than the oldest Promotion in a
+  # non-terminal phase (for each Stage) that may be spared by the garbage
+  # collector.
   maxRetainedPromotions: 20
-  
-  # The minimum age a Freight resource must be before it can be deleted.
-  # This is a duration string (e.g. 336h for 14 days).
+
+  # The minimum age Freight must be before considered eligible for garbage
+  # collection. This is a duration string (e.g. 336h for 14 days).
   minFreightDeletionAge: 336h
-  # The number of Freight resources for each Warehouse to retain that are older
-  # than the minimum deletion age. I.e., if a Warehouse has 20 Freight older
-  # than minFreightDeletionAge, only the 20 most recent will be retained.
-  maxRetainedFreight: 10
+  # The ideal maximum number of Freight OLDER than the oldest still in use
+  # (from each Warehouse) that may be spared by the garbage collector.
+  maxRetainedFreight: 20
 ```
 
 :::note
+
 `Promotion` resources are only deleted if they are in a terminal state (i.e.
 `Succeeded` or `Failed`). `Freight` resources are only deleted if they are not
 actively in use by any `Stage`.
 
 In both cases, this holds true even if the resource is older than the minimum
 deletion age.
+
 :::

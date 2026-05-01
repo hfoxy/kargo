@@ -5,7 +5,7 @@ description: Learn how to log in to Kargo
 # Logging In
 
 Whether you wish to interact with Kargo through its web-based UI or through
-it's [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
+its [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
 
 1. Obtain the address of your Kargo API server.
 
@@ -22,7 +22,9 @@ it's [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
        server.
 
         :::info
+
         The Kargo API server also serves the web-based UI.
+
         :::
 
         You will be presented with the login screen, where you may have the
@@ -32,12 +34,14 @@ it's [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
         ![Kargo Login Screen](./img/logging-in.png)
 
         :::info
+
         It is common for local installations of Kargo to have the admin
         user enabled, while production installations are more likely to have
         SSO enabled and the admin user disabled.
 
         If the admin user is enabled, the password can be obtained from the
         operator who installed Kargo's cluster-side components.
+
         :::
 
     1. Enter the admin user's password and click <Hlt>Login</Hlt>.
@@ -52,7 +56,6 @@ it's [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
 
        ![Kargo Projects List](./img/projects.png)
 
-
     </TabItem>
     <TabItem value="cli" label="Using the CLI">
 
@@ -64,12 +67,14 @@ it's [CLI](../../05-installing-the-cli/index.md), you will need to log in first.
       ```
 
       :::info
+
       It is common for local installations of Kargo to have the admin
       user enabled, while production installations are more likely to have
       SSO enabled and the admin user disabled.
 
       If the admin user is enabled, the password can be obtained from the
       operator who installed Kargo's cluster-side components.
+
       :::
 
       OR

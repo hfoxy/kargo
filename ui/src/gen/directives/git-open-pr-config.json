@@ -6,7 +6,7 @@
  "properties": {
   "createTargetBranch": {
    "type": "boolean",
-   "description": "Indicates whether a new, empty orphan branch should be created and pushed to the remote if the target branch does not already exist there. Default is false."
+   "description": "Deprecated. Is a no-op if set. Will be removed in a future release."
   },
   "insecureSkipTLSVerify": {
    "type": "boolean",
@@ -14,16 +14,18 @@
   },
   "provider": {
    "type": "string",
-   "description": "The name of the Git provider to use. Currently only 'github', 'gitlab' and 'azure' are supported. Kargo will try to infer the provider if it is not explicitly specified.",
+   "description": "The name of the Git provider to use. Currently 'azure', 'bitbucket', 'gitea', 'github', and 'gitlab' are supported. Kargo will try to infer the provider if it is not explicitly specified.",
    "enum": [
+    "azure",
+    "bitbucket",
+    "gitea",
     "github",
-    "gitlab",
-    "azure"
+    "gitlab"
    ]
   },
   "repoURL": {
    "type": "string",
-   "description": "The URL of a remote Git repository to clone.",
+   "description": "The URL of a remote Git repository to clone. Deprecated: Support for SSH URLs (ssh:// and SCP-style git@host:path) is deprecated as of v1.10.0 and will be removed in v1.13.0. Use HTTPS URLs instead.",
    "minLength": 1,
    "format": "uri"
   },
@@ -40,6 +42,11 @@
   "title": {
    "type": "string",
    "description": "The title for the pull request. Kargo generates a title based on the commit messages if it is not explicitly specified.",
+   "minLength": 1
+  },
+  "description": {
+   "type": "string",
+   "description": "The description of the pull request. Kargo generates a description based on the commit messages if it is not explicitly specified.",
    "minLength": 1
   },
   "labels": {

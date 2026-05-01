@@ -1,3 +1,5 @@
+import { parseJwtPayload } from '@ui/utils/jwt-payload';
+
 // https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
 export type JWTInfo = {
   sub: string;
@@ -11,7 +13,7 @@ export type JWTInfo = {
 // jwt claims register with "admin" subject on admin login
 export const isAdmin = (user?: JWTInfo | null) => user?.sub === 'admin';
 
-export const extractInfoFromJWT = (token: string): JWTInfo => JSON.parse(atob(token.split('.')[1]));
+export const extractInfoFromJWT = (token: string): JWTInfo => parseJwtPayload<JWTInfo>(token);
 
 export const isJWTValid = (token: string): boolean => {
   try {
@@ -37,4 +39,32 @@ export const getUserEmail = (user?: JWTInfo | null) => {
   }
 
   return meta;
+};
+
+export const claimsMapping: Record<string, { label: string; description: string }> = {
+  iss: {
+    label: 'Issuer',
+    description: 'Identifies the principal that issued the JWT.'
+  },
+  sub: {
+    label: 'Subject',
+    description: 'Identifies the principal that is the subject of the JWT.'
+  },
+  aud: {
+    label: 'Audience',
+    description: 'Identifies the recipients the JWT is intended for (can be a string or array).'
+  },
+  exp: {
+    label: 'Expiration Time',
+    description:
+      'Token expiration time (as Unix timestamp). After this time, the token must not be accepted.'
+  },
+  iat: {
+    label: 'Issued At',
+    description: 'The time the JWT was issued (as Unix timestamp).'
+  },
+  jti: {
+    label: 'JWT ID',
+    description: 'Unique identifier for the JWT, used to prevent replay attacks.'
+  }
 };

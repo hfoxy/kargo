@@ -10,35 +10,106 @@ minor release roughly every six weeks, with two or three major features
 completed per release, although this varies slightly by scope.
 
 :::caution
-This roadmap tracks only _major_ features and is subject to change at any time,
-for the most up-to-date information, please see the [GitHub
-Project](https://github.com/akuity/kargo/milestones)
+
+This roadmap highlights only major, _planned_ work for the **open source**
+edition of Kargo. Priorities may evolve over time based on community feedback
+and Akuity customer needs. For more detailed and up-to-date plans, please refer
+to our [project milestones](https://github.com/akuity/kargo/milestones) on
+GitHub. If you’re interested in what’s coming to our hosted, enterprise edition
+of Kargo, please [get in touch with us](https://akuity.io/get-in-touch)!
+
+Ideas and contributions from the community are always welcome, however, items
+not appearing on the roadmap are reviewed on a best-effort basis. If you would
+like to contribute, please avoid wasted or duplicated effort by discussing
+feature requests and design proposals with maintainers prior to starting work.
+While we cannot guarantee specific timelines or outcomes, we value and consider
+every submission.
+
 :::
 
 ## In Progress
 
-### v1.3.0
+### v1.10.0
 
-__Expected:__ TBD
+**Expected:** Mid-April, 2026
 
-v1.3.0 will focus on isolating user-defined promotion processes (or possibly
-individual steps thereof) in their own ephemeral execution environments. This
-is intended to pave the way for eventual support for custom/third-party
-promotion steps.
+🧬 Evolution; not revolution — apart from the usual slate of bug fixes and
+performance + stability improvements, v1.10.0 is set to deliver a broad
+collection of small, but meaningful quality-of-life improvements.
+
+A modest selection of anticipated highlights:
+
+* UI "My Projects" filter
+* Path filtering for push events from Git repositories ➡️ fewer Warehouses
+  executing unnecessary artifact discovery cycles
+* Broad range of new and improved promotion steps
+* Enhanced trust model for commits made by Kargo
+* New Helm chart options to support common operational concerns
+
+v1.10.0 will also include a partial UI transition from the deprecated gRPC API
+to new RESTful API.
 
 ## Upcoming
 
-### v1.4.0 and Beyond
+### v1.11.0
 
-__Expected:__ TBD
-
-v1.4.0 will leverage the improved isolation of user-defined promotion processes
-to begin supporting custom/third-party promotion steps. This work will include
-establishing a formal specification for developers wishing to implement their
-own promotion steps, as well as building the mechanisms whereby operators may
-install and users may leverage such promotion steps.
+**Expected:** Mid-June, 2026
 
 ## Completed
+
+### v1.9.0
+
+Focused on stability, performance, and usability.
+
+Introduced:
+
+* A new, RESTful API
+* User-generated API tokens
+* Opt-in Warehouse caching
+* Configurable rate limits
+* Refined everything related to Secret/credentials management
+* A large slate of small
+
+See [release notes](./80-release-notes/90-v1.9.0.md) for full details.
+
+### v1.8.0
+
+This small release focused on UI enhancements and general "quality-of-life"
+improvements, as well as a grab bag of small features.
+
+### v1.7.0
+
+This release focused on improving Kargo's webhook receiver capabilities, adding
+new Promotion steps, and enhancing the UI.
+
+### v1.6.0
+
+The anchor feature of v1.6.0 is support for triggering applicable Warehouses to
+execute their artifact discovery process in response to inbound webhooks from
+source code and container image repositories. Initial support will favor the
+most popular platforms, such as GitHub, GitLab, Docker Hub and Quay.io, although
+support for many others will be phased in over time.
+
+### v1.5.0
+
+This release focused on UI improvement and streamlining `Project` configuration
+through the introduction of a new `ProjectConfig` resource type. Conditional
+execution of promotion steps was also improved such that the success or failure
+of previous steps can be taken into account. This permits users to define
+more robust promotion processes by defining steps that conditionally execute
+error recovery or cleanup.
+
+### v1.4.0
+
+This release focused on small QOL improvements, notably access to logs generated
+by `Job` metrics as part of verification processes and support for enriching
+`Freight` with additional metadata by reading OIDC annotations from container
+images.
+
+### v1.3.0
+
+This release focused primarily on introducing support for conditional execution
+of promotion steps as determined by user-defined expressions.
 
 ### v1.2.0
 

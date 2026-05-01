@@ -18,7 +18,7 @@ integration process due to environmental differences, we've made it easy to
 execute tests within a container that is maximally similar to those used in CI.
 
 To take advantage of this, you only need `make` and
-[Docker](https://docs.docker.com/engine/install/) (or a Docker-compatible 
+[Docker](https://docs.docker.com/engine/install/) (or a Docker-compatible
 container-runtime).
 
 To run all unit tests:
@@ -28,6 +28,7 @@ make hack-test-unit
 ```
 
 :::info
+
 If you wish to opt-out of executing the tests within a container (for
 performance reasons, perhaps), drop the `hack-` prefix from the target:
 
@@ -36,6 +37,7 @@ make test-unit
 ```
 
 This will require Go to be installed locally.
+
 :::
 
 ## Running Linters
@@ -70,11 +72,13 @@ make hack-lint
 ```
 
 :::info
+
 If you wish to opt-out of executing any or all linters within a container (for
 performance reasons, perhaps), drop the `hack-` prefix from the desired target.
 
 This will require quite a variety of tools to be installed locally, so we do not
 recommend this if you can avoid it.
+
 :::
 
 ## Executing Code Generation
@@ -89,6 +93,7 @@ make hack-codegen
 ```
 
 :::info
+
 If you wish to opt-out of executing code-generation within a container (for
 performance reasons, perhaps), drop the `hack-` prefix from the target:
 
@@ -98,6 +103,7 @@ make codegen
 
 This will require quite a variety of tools to be installed locally, so we do not
 recommend this if you can avoid it.
+
 :::
 
 ## Building the Image
@@ -110,11 +116,14 @@ make hack-build
 ```
 
 :::info
+
 There is seldom a need to do this, as the next section will cover a better
 option for rapidly building and deploying Kargo from source.
+
 :::
 
-:::tip
+:::info
+
 The [Docker buildx](https://github.com/docker/buildx) machine required by the
 build process has to be created with the `--driver-opt network=host` option to
 allow it to access the (temporary) local image registry used for the base image.
@@ -124,6 +133,7 @@ source metadata for localhost:5001/kargo-base:latest-arm64` or `granting
 entitlement network.host is not allowed by build daemon configuration`), you
 may need to (re)create the machine using `docker buildx create` with this
 option set.
+
 :::
 
 ## Iterating Quickly
@@ -142,11 +152,6 @@ as you continue iterating on your changes.
 The remainder of this section covers the approaches we recommend for enabling
 this.
 
-:::info
-We may eventually provide convenient methods of running _some_ Kargo components
-as native processes.
-:::
-
 1. Launch or re-use an existing local Kubernetes cluster.
 
     Any of the following options are viable:
@@ -158,28 +163,24 @@ as native processes.
     [Docker Desktop](https://www.docker.com/products/docker-desktop/)
     user, you can follow
     [these instructions](https://docs.docker.com/desktop/kubernetes/) to enable
-    its built-in Kubernetes support.
+    its built-in Kubernetes support. If it's already enabled, you're ready to
+    go.
 
     :::info
+
     A specific benefit of this option is that nothing special is required in
     terms of creating a local image registry connected to the cluster.
     Additionally, this approach requires no specific port-forwarding rules to be
     defined.
     :::
+
     :::info
+
     Although this is one of the fastest paths to a local Kubernetes cluster, be
     aware that Docker Desktop supports only a _single_ Kubernetes cluster. If
     that cluster reaches a state you are dissatisfied with, resetting it will
     remove not just Kargo-related resources, but _all_ your workloads and data.
     :::
-
-    To install Kargo's prerequisites, you will need
-    [Helm](https://helm.sh/docs/intro/install/) installed first, and can then
-    execute a convenient `make` target:
-
-    ```shell
-    make hack-install-prereqs
-    ```
    
     </TabItem>
     <TabItem value="orbstack" label="OrbStack">
@@ -187,28 +188,24 @@ as native processes.
     [OrbStack](https://orbstack.dev/) is a fast, lightweight, drop-in replacement
     for Docker Desktop for Mac OS only. You can follow
     [these instructions](https://docs.docker.com/desktop/kubernetes/) to enable
-    its built-in Kubernetes support.
+    its built-in Kubernetes support. If it's already enabled, you're ready to
+    go.
 
     :::info
+
     A specific benefit of this option is that nothing special is required in
     terms of creating a local image registry connected to the cluster.
     Additionally, this approach requires no specific port-forwarding rules to be
     defined.
     :::
+
     :::info
+
     Although this is one of the fastest paths to a local Kubernetes cluster, be
     aware that OrbStack supports only a _single_ Kubernetes cluster. If
     that cluster reaches a state you are dissatisfied with, resetting it will
     remove not just Kargo-related resources, but _all_ your workloads and data.
     :::
-
-    To install Kargo's prerequisites, you will need
-    [Helm](https://helm.sh/docs/intro/install/) installed first, and can then
-    execute a convenient `make` target:
-
-    ```shell
-    make hack-install-prereqs
-    ```
 
     </TabItem>
     <TabItem value="kind" label="kind">
@@ -216,11 +213,8 @@ as native processes.
     If you have any Docker-compatible container runtime installed (including
     native Docker, Docker Desktop, or OrbStack), you can easily launch a
     disposable cluster to facilitate Kargo development using
-    [kind](https://kind.sigs.k8s.io/#installation-and-usage).
-
-    This option also requires
-    [ctlptl](https://github.com/tilt-dev/ctlptl#how-do-i-install-it) and
-    [Helm](https://helm.sh/docs/intro/install/) to be installed.
+    [kind](https://kind.sigs.k8s.io/#installation-and-usage). You do not need to
+    install it in advance.
 
     The following `make` target will launch a kind cluster with a local image
     registry wired into it, various port-forwarding rules pre-configured, and
@@ -231,10 +225,19 @@ as native processes.
     ```
 
     :::info
-    While this option is a bit more complex than using Docker Desktop or OrbStack
-    directly, it offers the advantage of being fully-disposable. If your cluster
-    reaches a state you are dissatisfied with, you can simply destroy it and
-    launch a new one.
+
+    The `hack-kind-up` target will ensure the installation of suitable versions
+    of `kind` and [ctlptl](https://github.com/tilt-dev/ctlptl#how-do-i-install-it)
+    (used for declarative kind configuration) into `hack/bin/`.
+
+    :::
+
+    :::info
+
+    While this option is a bit more complex than using Docker Desktop or
+    OrbStack directly, it offers the advantage of being fully-disposable. If
+    your cluster reaches a state you are dissatisfied with, you can simply
+    destroy it and launch a new one.
     :::
 
     </TabItem>
@@ -243,11 +246,7 @@ as native processes.
     If you have any Docker-compatible container runtime installed (including
     native Docker, Docker Desktop, or OrbStack), you can easily launch a
     disposable cluster to facilitate Kargo development using
-    [k3d](https://k3d.io).
-
-    This option also requires
-    [ctlptl](https://github.com/tilt-dev/ctlptl#how-do-i-install-it) and
-    [Helm](https://helm.sh/docs/intro/install/) to be installed.
+    [k3d](https://k3d.io). You do not need to install it in advance.
 
     The following `make` target will launch a kind cluster with a local image
     registry wired into it, various port-forwarding rules pre-configured, and
@@ -258,20 +257,85 @@ as native processes.
     ```
 
     :::info
-    While this option is a bit more complex than using Docker Desktop or OrbStack
-    directly, it offers the advantage of being fully-disposable. If your cluster
-    reaches a state you are dissatisfied with, you can simply destroy it and
-    launch a new one.
+
+    The `hack-k3d-up` target will ensure the installation of suitable versions
+    of `k3d` and
+    [ctlptl](https://github.com/tilt-dev/ctlptl#how-do-i-install-it) (used for
+    declarative k3d configuration) into `hack/bin/`.
+
+    :::
+
+    :::info
+
+    While this option is a bit more complex than using Docker Desktop or
+    OrbStack directly, it offers the advantage of being fully-disposable. If
+    your cluster reaches a state you are dissatisfied with, you can simply
+    destroy it and launch a new one.
     :::
 
     </TabItem>
     </Tabs>
 
-    Whichever approach you choose, your cluster will end up with recent, stable
-    versions of [cert-manager](https://cert-manager.io/) and 
-    [Argo CD](https://argoproj.github.io/cd/) installed.
+1. Optional: Configure and start a tunnel for the external webhooks server:
+
+    If you are working on or testing the external webhooks server, you will
+    benefit from configuring a tunnel from the outside world so that traffic
+    originating from platforms like GitHub, Docker Hub, and others can reach the
+    server. It is easy to accomplish this using [ngrok](https://ngrok.com/).
+    If you wish to do so, you must first
+    [install ngrok](https://ngrok.com/downloads) yourself.
+
+    With `ngrok` installed, you can conveniently open a tunnel to
+    `localhost:30083` (where the next step will run the external webhooks
+    server) using:
+
+    ```shell
+    make hack-ngrok
+    ```
+
+    Allow this process to run while you are working on or testing the external
+    webhooks server. Interrupt it with `ctrl + c` when you are done.
+
+    If you have a paid ngrok account that allows you to use a custom domain name
+    for your tunnels, you can specify that domain name using the
+    `KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME` and (to properly set the protocol
+    scheme) `KARGO_EXTERNAL_WEBHOOKS_SERVER_TLS_TERMINATED_UPSTREAM` environment
+    variables before running the make target:
+
+    ```shell
+    export KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME=my-tunnel.ngrok.io
+    export KARGO_EXTERNAL_WEBHOOKS_SERVER_TLS_TERMINATED_UPSTREAM=true
+    make hack-ngrok
+    ```
+
+    If the `KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME` environment variable is
+    undefined, the tunnel will utilize a dynamically-generated subdomain of
+    `ngrok.io`.
+
+1. Build and deploy Kargo from source:
+
+    [Tilt](https://docs.tilt.dev/#macoslinux) is a convenient tool that builds
+    container images from source and seamlessly deploys them to a local
+    Kubernetes cluster. More importantly, it enables developers to rapidly
+    rebuild and replace running components with the click of a button. You do
+    not need to install it in advance.
+
+    ```shell
+    make hack-tilt-up
+    ```
 
     :::info
+
+    The `hack-tilt-up` target will ensure the installation of a suitable
+    versions of `tilt` and `helm` into `hack/bin/`.
+
+    When run for the first time on a new development cluster, `make
+    hack-tilt-up` will install suitable versions of
+    [cert-manager](https://cert-manager.io/),
+    [Argo CD](https://argoproj.github.io/cd/), and
+    [Argo Rollouts](https://argoproj.github.io/rollouts/) into your cluster
+    using `helm`.
+
     The Argo CD dashboard will be exposed at
     [localhost:30080](https://localhost:30080).
 
@@ -280,34 +344,34 @@ as native processes.
     You may safely ignore any certificate warnings.
     :::
 
-1. Build and deploy Kargo from source:
-
-    [Tilt](https://docs.tilt.dev/#macoslinux) is a convenient tool that builds
-    container images from source and seamlessly deploys them to a local
-    Kubernetes cluster. More importantly, it enables developers to rapidly
-    rebuild and replace running components with the click of a button.
-
-    :::warning
-    If using OrbStack, be advised it is only compatible with Tilt as of Tilt
-    v0.33.6. Please use that version or greater.
-    :::
-
-    ```shell
-    tilt up
-    ```
-
-    Tilt will also launch a web-based UI running at
+    Tilt will launch a web-based UI running at
     [http://localhost:10350](http://localhost:10350). Visit this in your web
     browser to view the build and deployment status of each Kargo component as
     well as the logs from each component.
 
     :::info
+
     Tilt is often configured to watch files and automatically rebuild and replace
     running components when their source code is changed. This is deliberately
     disabled for Kargo since the Docker image takes long enough to build that
     it’s better to conserve system resources by only rebuilding when you choose.
     The web UI makes it easy to identify components whose source has been
     altered. They can be rebuilt and replaced with a single click.
+    :::
+
+    :::info
+
+    If you specified a custom domain name for a tunnel to the external webhooks
+    server in the previous step by defining a value for the
+    `KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME` environment variable, you should
+    export the same value for that environment variable before running `make
+    tilt up` as well:
+
+    ```shell
+    export KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME=my-tunnel.ngrok.io
+    make hack-tilt-up
+    ```
+
     :::
 
 1. If necessary, build the CLI from source:
@@ -334,13 +398,13 @@ as native processes.
 
     You may safely ignore any certificate warnings.
 
-1. When you are done with Tilt, interrupt the running `tilt up` process with
-   `ctrl + c`. Components _will remain running in the cluster_, but Tilt will no
-   longer be in control. If Tilt is restarted later, it will retake control of
-   the already-running components.
+1. When you are done with Tilt, interrupt the running `make hack-tilt-up`
+   process with `ctrl + c`. Components _will remain running in the cluster_, but
+   Tilt will no longer be in control. If Tilt is restarted later, it will retake
+   control of the already-running components.
 
-    If you wish to undeploy everything Tilt has deployed for you, use `tilt
-    down`.
+    If you wish to undeploy everything Tilt has deployed for you (except for
+    prerequisites), use `make hack-tilt-down`.
 
 1. Clean up your local Kubernetes cluster.
 
@@ -387,6 +451,7 @@ as native processes.
     ```
 
     :::info
+
     This command deliberately leaves your local image registry running so that if
     you resume work later, you are doing so with a local registry that’s already
     primed with most layers of Kargo’s image.
@@ -414,6 +479,7 @@ as native processes.
     ```
 
     :::info
+
     This command deliberately leaves your local image registry running so that if
     you resume work later, you are doing so with a local registry that’s already
     primed with most layers of Kargo’s image.
@@ -455,6 +521,7 @@ make hack-serve-docs
 ```
 
 :::info
+
 If you wish to opt-out of executing code-generation within a container (for
 performance reasons, perhaps), drop the `hack-` prefix from the target to run the docs natively on your system:
 
@@ -464,4 +531,5 @@ make serve-docs
 
 This will require quite a variety of tools to be installed locally, so we do not
 recommend this if you can avoid it.
+
 :::

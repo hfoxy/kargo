@@ -47,9 +47,21 @@ spec:
             {{- end }}
           {{- end }}
         spec:
+          {{- if not .Values.rbac.useDefaultServiceAccount }}
           serviceAccountName: kargo-garbage-collector
+          {{- end }}
+          {{- if .Values.rbac.disableAutomountServiceAccountToken }}
+          automountServiceAccountToken: false
+          {{- end }}
           {{- with .Values.garbageCollector.affinity | default .Values.global.affinity }}
           affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.garbageCollector.priorityClassName | default .Values.global.priorityClassName }}
+          priorityClassName: {{ . }}
+          {{- end }}
+          {{- with .Values.image.pullSecrets }}
+          imagePullSecrets:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           containers:
@@ -63,12 +75,14 @@ spec:
               valueFrom:
                 resourceFieldRef:
                   containerName: garbage-collector
+                  divisor: "1"
                   resource: limits.memory
             - name: GOMAXPROCS
               valueFrom:
                 resourceFieldRef:
                   containerName: garbage-collector
-                  resource: limits.cpu
+                  divisor: "1"
+                  resource: {{ include "kargo.selectCpuResourceField" (dict "resources" .Values.garbageCollector.resources) }}
             {{- with (concat .Values.global.env .Values.garbageCollector.env) }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

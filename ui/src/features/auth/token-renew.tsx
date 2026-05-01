@@ -11,9 +11,9 @@ import {
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import { redirectToQueryParam, refreshTokenKey } from '@ui/config/auth';
+import { isSafeRedirectPath, redirectToQueryParam, refreshTokenKey } from '@ui/config/auth';
 import { paths } from '@ui/config/paths';
-import { getPublicConfig } from '@ui/gen/service/v1alpha1/service-KargoService_connectquery';
+import { getPublicConfig } from '@ui/gen/api/service/v1alpha1/service-KargoService_connectquery';
 
 import { LoadingState } from '../common';
 
@@ -53,18 +53,7 @@ export const TokenRenew = () => {
       issuerUrl &&
       discoveryRequest(issuerUrl, {
         [allowInsecureRequests]: shouldAllowHttpRequest()
-      })
-        .then((response) => processDiscoveryResponse(issuerUrl, response))
-        .then((response) => {
-          if (
-            response.code_challenge_methods_supported?.includes('S256') !== true &&
-            !issuerUrl.toString().startsWith('https://login.microsoftonline.com')
-          ) {
-            throw new Error('OIDC config fetch error');
-          }
-
-          return response;
-        }),
+      }).then((response) => processDiscoveryResponse(issuerUrl, response)),
     enabled: !!issuerUrl
   });
 
@@ -82,6 +71,8 @@ export const TokenRenew = () => {
     }
 
     (async () => {
+      const redirectQuery = searchParams.get(redirectToQueryParam);
+      const safeRedirectQuery = isSafeRedirectPath(redirectQuery) ? redirectQuery : null;
       try {
         const response = await refreshTokenGrantRequest(as, client, oidcClientAuth, refreshToken, {
           [allowInsecureRequests]: shouldAllowHttpRequest(),
@@ -96,28 +87,28 @@ export const TokenRenew = () => {
             placement: 'bottomRight'
           });
           logout();
-          navigate(paths.login);
+          navigate(
+            `${paths.login}${redirectQuery ? `?${redirectToQueryParam}=${redirectQuery}` : ''}`
+          );
           return;
         }
 
         onLogin(result.id_token, result.refresh_token);
-        navigate(searchParams.get(redirectToQueryParam) || paths.home);
+        navigate(safeRedirectQuery || paths.home);
       } catch (err) {
-        notification.error({
-          message: `OIDC: ${JSON.stringify(err)}`,
-          placement: 'bottomRight'
-        });
-
         logout();
-        navigate(paths.login);
+        navigate(
+          `${paths.login}${redirectQuery ? `?${redirectToQueryParam}=${redirectQuery}` : ''}`
+        );
       }
     })();
   }, [as, client]);
 
   React.useEffect(() => {
+    const redirectQuery = searchParams.get(redirectToQueryParam);
     if (isError || isASError) {
       logout();
-      navigate(paths.login);
+      navigate(`${paths.login}${redirectQuery ? `?${redirectToQueryParam}=${redirectQuery}` : ''}`);
     }
   }, [isError, isASError]);
 

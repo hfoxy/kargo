@@ -3,6 +3,7 @@
 
 const path = require('path');
 const {themes} = require('prism-react-renderer');
+const tags = require('./tags');
 const lightCodeTheme = themes.github;
 const darkCodeTheme = themes.dracula;
 
@@ -32,6 +33,32 @@ const config = {
           sidebarPath: require.resolve('./sidebars.js'),
           sidebarCollapsible: false,
           routeBasePath: '/', // Serve the docs at the site's roo
+          sidebarItemsGenerator: async function ({
+            defaultSidebarItemsGenerator,
+            ...args
+          }) {
+            const sidebarItems = await defaultSidebarItemsGenerator(args);
+
+            function addBadges(items) {
+              return items.map((item) => {
+                if (item.type === 'category') {
+                  item.items = addBadges(item.items);
+                }
+
+                item.customProps = {
+                  beta: tags.isBeta(item),
+                  pro: tags.isProfessional(item)
+                };
+
+                return item;
+              });
+            }
+            // sidebars.js already lists the deprecated gRPC API documentation 
+            // page, so we need to filter it out here to avoid listing it twice.
+            return addBadges(sidebarItems.filter(
+              (item) => /** @type {any} */ (item).id !== 'api-documentation')
+            );
+          },
         },
         blog: false,
         pages: {},
@@ -50,15 +77,25 @@ const config = {
         anonymizeIP: true,
       },
     ],
+    'docusaurus-plugin-sass',
     [
-      require.resolve("@cmfcmf/docusaurus-search-local"),
+      '@scalar/docusaurus',
       {
-        indexBlog: false,
-      },
+        label: 'API Reference',
+        route: '/api-docs',
+        showNavLink: false, // Don't include in the top navbar
+        configuration: {
+          url: '/swagger.json',
+          servers: [{
+            url: '{baseUrl}',
+            variables: {
+              baseUrl: {default: 'https://kargo.example.com'}
+            }
+          }]
+        },
+      }
     ],
-    'docusaurus-plugin-sass'
   ],
-
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
@@ -114,6 +151,12 @@ const config = {
         defaultMode: 'light',
       },
       metadata: [{name: 'akuity, argoproj, argo cd, argo workflows, argo events, argo rollouts, kubernetes, gitops, devops', content: 'akuity, documentation, developer documentation'}],
+      algolia: {
+        appId: '3SQ7LK6WD9',
+        apiKey: '5627b8c2efd5b28a5b70c6660cb2b0f3',
+        indexName: 'kargo',
+        contextualSearch: true,
+      }
     }),
 };
 

@@ -10,11 +10,13 @@
   },
   "provider": {
    "type": "string",
-   "description": "The name of the Git provider to use. Currently only 'github', 'gitlab' and 'azure' are supported. Kargo will try to infer the provider if it is not explicitly specified.",
+   "description": "The name of the Git provider to use. Currently 'azure', 'bitbucket', 'gitea', 'github', and 'gitlab' are supported. Kargo will try to infer the provider if it is not explicitly specified.",
    "enum": [
+    "azure",
+    "bitbucket",
+    "gitea",
     "github",
-    "gitlab",
-    "azure"
+    "gitlab"
    ]
   },
   "prNumber": {
@@ -24,7 +26,7 @@
   },
   "repoURL": {
    "type": "string",
-   "description": "The URL of a remote Git repository to clone.",
+   "description": "The URL of a remote Git repository to clone. Deprecated: Support for SSH URLs (ssh:// and SCP-style git@host:path) is deprecated as of v1.10.0 and will be removed in v1.13.0. Use HTTPS URLs instead.",
    "minLength": 1,
    "format": "uri"
   }

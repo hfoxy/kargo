@@ -5,11 +5,13 @@ import { Dropdown, Space } from 'antd';
 import { getPromotionState, getPromotionStepAlias } from '@ui/plugins/atoms/plugin-helper';
 import { DeepLinkPluginsInstallation } from '@ui/plugins/atoms/plugin-interfaces';
 
-import { getPullRequestLink } from '../get-pr-link';
+import { getPullRequestLink, PR_STEP_TYPES } from '../get-pr-link';
+
+const isPRStep = (stepType: string | undefined): boolean => PR_STEP_TYPES.includes(stepType || '');
 
 const plugin: DeepLinkPluginsInstallation['Promotion'] = {
   shouldRender(opts) {
-    return Boolean(opts.promotion?.spec?.steps?.find((step) => step?.uses === 'git-open-pr'));
+    return Boolean(opts.promotion?.spec?.steps?.find((step) => isPRStep(step?.uses)));
   },
   render(props) {
     // array of [step-alias, deep-link]
@@ -18,13 +20,15 @@ const plugin: DeepLinkPluginsInstallation['Promotion'] = {
     const promotionState = getPromotionState(props.promotion);
 
     for (const [idx, step] of Object.entries(props.promotion?.spec?.steps || [])) {
-      if (step?.uses === 'git-open-pr') {
+      if (isPRStep(step?.uses)) {
         const alias = getPromotionStepAlias(step, idx);
 
         try {
-          const deepLink = getPullRequestLink(step, promotionState[alias]);
+          const deepLink = getPullRequestLink(promotionState[alias]);
 
-          deepLinks.push([alias, deepLink]);
+          if (typeof deepLink === 'string' && deepLink !== '') {
+            deepLinks.push([alias, deepLink]);
+          }
         } catch {
           // TODO: failed to get deep link.. most probably due to invalid config/output
         }

@@ -67,10 +67,11 @@ vars:
 - name: targetBranch
   value: main
 ```
-
 :::info
+
 Variables without a default value are required and must be provided when the task
 is referenced in a Promotion Template.
+
 :::
 
 Variables can be referenced throughout the task using `${{ vars.<variable-name> }}`:
@@ -116,7 +117,7 @@ spec:
 
 The `steps` section in a Promotion Task defines the sequence of actions to
 perform when the task is used. Each step can reference a
-[built-in promotion step](./promotion-steps) using the `uses` key:
+[built-in promotion step](30-promotion-steps/index.md) using the `uses` key:
 
 ```yaml
 steps:
@@ -130,9 +131,11 @@ steps:
 ```
 
 :::note
+
 Unlike Promotion Templates, task steps cannot reference other Promotion Tasks.
 This prevents circular dependencies and keeps tasks focused on a specific
 workflow.
+
 :::
 
 #### Task Context
@@ -151,10 +154,11 @@ steps:
     repoURL: ${{ vars.repoURL }}
 - uses: git-wait-for-pr
   config:
-    prNumber: ${{ task.outputs['open-pr'].prNumber }}
+    prNumber: ${{ task.outputs['open-pr'].pr.id }}
 ```
 
 :::info
+
 The `task.outputs` variable is required when referencing outputs from previous
 steps within the same task.
 
@@ -163,6 +167,7 @@ This requirement exists because tasks are inflated during the creation of a
 to avoid conflicts with other steps in the template. This means that the
 alias of a task step at runtime is not known to the `PromotionTask` definition,
 so it cannot be used to reference outputs.
+
 :::
 
 ### Task Outputs
@@ -219,9 +224,10 @@ steps:
     name: global-task
     kind: ClusterPromotionTask
 ```
-
 :::info
+
 `ClusterPromotionTasks` are perfect for standardizing promotion workflows across
 your organization, such as promotion patterns that should be consistently applied
 across all projects.
+
 :::

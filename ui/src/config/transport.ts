@@ -2,6 +2,8 @@ import { Code, ConnectError, Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
 import { notification } from 'antd';
 
+import { parseJwtPayload } from '@ui/utils/jwt-payload';
+
 import { authTokenKey, redirectToQueryParam, refreshTokenKey } from './auth';
 import { paths } from './paths';
 
@@ -22,7 +24,9 @@ const authHandler: Interceptor = (next) => async (req) => {
   let isTokenExpired;
 
   try {
-    isTokenExpired = token && Date.now() >= JSON.parse(atob(token.split('.')[1])).exp * 1000;
+    const payload = token ? parseJwtPayload<{ exp?: number }>(token) : null;
+    isTokenExpired =
+      Boolean(token) && typeof payload?.exp === 'number' && Date.now() >= payload.exp * 1000;
   } catch (_) {
     logout();
 
@@ -65,15 +69,15 @@ export const newErrorHandler = (handler: (err: ConnectError) => void): Intercept
     });
 };
 
-const defaultErrorHandler = newErrorHandler((err) => {
+export const defaultErrorHandler = (err: ConnectError) => {
   const errorMessage = err instanceof ConnectError ? err.rawMessage : 'Unexpected API error';
   notification.error({ message: errorMessage, placement: 'bottomRight' });
-});
+};
 
 export const transport = createConnectTransport({
   baseUrl: '',
   useBinaryFormat: true,
-  interceptors: [defaultErrorHandler]
+  interceptors: [newErrorHandler(defaultErrorHandler)]
 });
 
 export const newTransportWithAuth = (errorHandler: Interceptor) =>
@@ -83,4 +87,4 @@ export const newTransportWithAuth = (errorHandler: Interceptor) =>
     interceptors: [authHandler, errorHandler]
   });
 
-export const transportWithAuth = newTransportWithAuth(defaultErrorHandler);
+export const transportWithAuth = newTransportWithAuth(newErrorHandler(defaultErrorHandler));

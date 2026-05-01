@@ -5,6 +5,7 @@ syntax = "proto2";
 
 package github.com.akuity.kargo.api.v1alpha1;
 
+import "k8s.io/api/core/v1/generated.proto";
 import "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1/generated.proto";
 import "k8s.io/apimachinery/pkg/apis/meta/v1/generated.proto";
 import "k8s.io/apimachinery/pkg/runtime/generated.proto";
@@ -55,6 +56,13 @@ message AnalysisTemplateReference {
   //
   // +kubebuilder:validation:Required
   optional string name = 1;
+
+  // Kind is the type of the AnalysisTemplate. Can be either AnalysisTemplate or
+  // ClusterAnalysisTemplate, default is AnalysisTemplate.
+  //
+  // +kubebuilder:validation:Optional
+  // +kubebuilder:validation:Enum=AnalysisTemplate;ClusterAnalysisTemplate
+  optional string kind = 2;
 }
 
 // ApprovedStage describes a Stage for which Freight has been (manually)
@@ -93,6 +101,148 @@ message ArgoCDAppSyncStatus {
   optional string revision = 2;
 
   repeated string revisions = 3;
+}
+
+// ArtifactReference is a reference to a specific version of an artifact.
+message ArtifactReference {
+  // ArtifactType specifies the type of artifact this is. Often, but not always,
+  // it will be the media type (MIME type) of the artifact referenced by this
+  // ArtifactReference.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string artifactType = 1;
+
+  // SubscriptionName is the name of the Subscription that discovered this
+  // artifact.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string subscriptionName = 2;
+
+  // Version identifies a specific revision of this artifact.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string version = 3;
+
+  // Metadata is a JSON object containing a mostly opaque collection of artifact
+  // attributes. (It must be an object. It may not be a list or a scalar value.)
+  // "Mostly" because Kargo may understand how to interpret some documented,
+  // well-known, top-level keys. Those aside, this metadata is only understood
+  // by a corresponding Subscriber implementation that created it.
+  //
+  // +optional
+  optional .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON metadata = 4;
+}
+
+// ArtifactoryWebhookReceiverConfig describes a webhook receiver that is
+// compatible with JFrog Artifactory payloads.
+message ArtifactoryWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret-token` key whose
+  // value is the shared secret used to authenticate the webhook requests sent
+  // by JFrog Artifactory. For more information please refer to the JFrog
+  // Artifactory documentation:
+  //   https://jfrog.com/help/r/jfrog-platform-administration-documentation/webhooks
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+
+  // VirtualRepoName is the name of an Artifactory virtual repository.
+  //
+  // When unspecified, the Artifactory webhook receiver depends on the value of
+  // the webhook payload's `data.repo_key` field when inferring the URL of the
+  // repository from which the webhook originated, which will always be an
+  // Artifactory "local repository." In cases where a Warehouse subscribes to
+  // such a repository indirectly via a "virtual repository," there will be a
+  // discrepancy between the inferred (local) repository URL and the URL
+  // actually used by the subscription, which can prevent the receiver from
+  // identifying such a Warehouse as one in need of refreshing. When specified,
+  // the value of the VirtualRepoName field supersedes the value of the webhook
+  // payload's `data.repo_key` field to compensate for that discrepancy.
+  //
+  // In practice, when using virtual repositories, a separate Artifactory
+  // webhook receiver should be configured for each, but one such receiver can
+  // handle inbound webhooks from any number of local repositories that are
+  // aggregated by that virtual repository. For example, if a virtual repository
+  // `proj-virtual` aggregates container images from all of the `proj`
+  // Artifactory project's local image repositories, with a single webhook
+  // configured to post to a single receiver configured for the `proj-virtual`
+  // virtual repository, an image pushed to
+  // `example.frog.io/proj-<local-repo-name>/<path>/image`, will cause that
+  // receiver to refresh all Warehouses subscribed to
+  // `example.frog.io/proj-virtual/<path>/image`.
+  //
+  // +optional
+  optional string virtualRepoName = 2;
+}
+
+// AutoPromotionOptions specifies options pertaining to auto-promotion.
+message AutoPromotionOptions {
+  // SelectionPolicy specifies the rules for identifying new Freight that is
+  // eligible for auto-promotion to this Stage. This field is optional. When
+  // left unspecified, the field is implicitly treated as if its value were
+  // "NewestFreight".
+  //
+  // Accepted Values:
+  //
+  // - "NewestFreight": The newest Freight that is available to the Stage is
+  //   eligible for auto-promotion.
+  //
+  // - "MatchUpstream": Only the Freight currently used immediately upstream
+  //   from this Stage is eligible for auto-promotion. This policy may only
+  //   be applied when the Stage has exactly one upstream Stage.
+  optional string selectionPolicy = 1;
+}
+
+// AzureWebhookReceiverConfig describes a webhook receiver that is compatible
+// with Azure Container Registry (ACR) and Azure DevOps payloads.
+message AzureWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose value
+  // does NOT need to be shared directly with Azure when registering a webhook.
+  // It is used only by Kargo to create a complex, hard-to-guess URL,
+  // which implicitly serves as a shared secret. For more information about
+  // Azure webhooks, please refer to the Azure documentation:
+  //
+  //  Azure Container Registry:
+  // 	https://learn.microsoft.com/en-us/azure/container-registry/container-registry-repositories
+  //
+  //  Azure DevOps:
+  // 	http://learn.microsoft.com/en-us/azure/devops/service-hooks/services/webhooks?view=azure-devops
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+}
+
+// BitbucketWebhookReceiverConfig describes a webhook receiver that is
+// compatible with Bitbucket payloads.
+message BitbucketWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose
+  // value is the shared secret used to authenticate the webhook requests sent
+  // by Bitbucket. For more information please refer to the Bitbucket
+  // documentation:
+  //   https://support.atlassian.com/bitbucket-cloud/docs/manage-webhooks/
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
 }
 
 // Chart describes a specific version of a Helm chart.
@@ -140,45 +290,92 @@ message ChartDiscoveryResult {
 
 // ChartSubscription defines a subscription to a Helm chart repository.
 message ChartSubscription {
-  // RepoURL specifies the URL of a Helm chart repository. It may be a classic
-  // chart repository (using HTTP/S) OR a repository within an OCI registry.
-  // Classic chart repositories can contain differently named charts. When this
-  // field points to such a repository, the Name field MUST also be used
-  // to specify the name of the desired chart within that repository. In the
-  // case of a repository within an OCI registry, the URL implicitly points to
-  // a specific chart and the Name field MUST NOT be used. The RepoURL field is
+  // DiscoveryLimit is an optional limit on the number of chart versions that can be
+  // discovered for this subscription. The limit is applied after filtering charts based on
+  // the semverConstraint field. The upper limit for this field is 100.
+  optional int64 discoveryLimit = 1;
+
+  // InsecureSkipTLSVerify specifies whether certificate verification errors should be ignored
+  // when connecting to the repository. This should be enabled only with great caution.
+  optional bool insecureSkipTLSVerify = 2;
+
+  // Name specifies the name of a Helm chart to subscribe to within a classic chart repository
+  // specified by the repoURL field. This field is required when the repoURL field points to a
+  // classic chart repository and MUST otherwise be empty.
+  optional string name = 3;
+
+  // RepoURL specifies the URL of a Helm chart repository. It may be a classic chart
+  // repository (using HTTP/S) OR a repository within an OCI registry. Classic chart
+  // repositories can contain differently named charts. When this field points to such a
+  // repository, the name field MUST also be used to specify the name of the desired chart
+  // within that repository. In the case of a repository within an OCI registry, the URL
+  // implicitly points to a specific chart and the name field MUST NOT be used. This field is
   // required.
-  //
-  // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=`^(((https?)|(oci))://)([\w\d\.\-]+)(:[\d]+)?(/.*)*$`
-  optional string repoURL = 1;
+  optional string repoURL = 4;
 
-  // Name specifies the name of a Helm chart to subscribe to within a classic
-  // chart repository specified by the RepoURL field. This field is required
-  // when the RepoURL field points to a classic chart repository and MUST
-  // otherwise be empty.
-  optional string name = 2;
+  // SemverConstraint specifies constraints on what new chart versions are permissible. When
+  // left unspecified, there will be no constraints, which means the latest version of the
+  // chart will always be used. Care should be taken with leaving this field unspecified, as
+  // it can lead to the unanticipated rollout of breaking changes.
+  optional string semverConstraint = 5;
+}
 
-  // SemverConstraint specifies constraints on what new chart versions are
-  // permissible. This field is optional. When left unspecified, there will be
-  // no constraints, which means the latest version of the chart will always be
-  // used. Care should be taken with leaving this field unspecified, as it can
-  // lead to the unanticipated rollout of breaking changes.
-  // More info: https://github.com/masterminds/semver#checking-version-constraints
-  //
-  // +kubebuilder:validation:Optional
-  optional string semverConstraint = 3;
+// ClusterConfig is a resource type that describes cluster-level Kargo
+// configuration.
+message ClusterConfig {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
-  // DiscoveryLimit is an optional limit on the number of chart versions that
-  // can be discovered for this subscription. The limit is applied after
-  // filtering charts based on the SemverConstraint field.
-  // When left unspecified, the field is implicitly treated as if its value
-  // were "20". The upper limit for this field is 100.
+  // Spec describes the configuration of a cluster.
+  optional ClusterConfigSpec spec = 2;
+
+  // Status describes the current status of a ClusterConfig.
+  optional ClusterConfigStatus status = 3;
+}
+
+// ClusterConfigList contains a list of ClusterConfigs.
+message ClusterConfigList {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+
+  repeated ClusterConfig items = 2;
+}
+
+// ClusterConfigSpec describes cluster-level Kargo configuration.
+message ClusterConfigSpec {
+  // WebhookReceivers describes cluster-scoped webhook receivers used for
+  // processing events from various external platforms
+  repeated WebhookReceiverConfig webhookReceivers = 1;
+
+  // GitClient describes cluster-level configuration for Kargo's Git client,
+  // including committer identity and an optional signing key. If set, these
+  // values take precedence over any configuration provided at install time
+  // via the Helm chart.
+  // +optional
+  optional GitClientConfig gitClient = 2;
+}
+
+// ClusterConfigStatus describes the current status of a ClusterConfig.
+message ClusterConfigStatus {
+  // Conditions contains the last observations of the ClusterConfig's current
+  // state.
   //
-  // +kubebuilder:validation:Minimum=1
-  // +kubebuilder:validation:Maximum=100
-  // +kubebuilder:default=20
-  optional int32 discoveryLimit = 4;
+  // +patchMergeKey=type
+  // +patchStrategy=merge
+  // +listType=map
+  // +listMapKey=type
+  repeated .k8s.io.apimachinery.pkg.apis.meta.v1.Condition conditions = 1;
+
+  // ObservedGeneration represents the .metadata.generation that this
+  // ClusterConfig was reconciled against.
+  optional int64 observedGeneration = 3;
+
+  // LastHandledRefresh holds the value of the most recent AnnotationKeyRefresh
+  // annotation that was handled by the controller. This field can be used to
+  // determine whether the request to refresh the resource has been handled.
+  // +optional
+  optional string lastHandledRefresh = 4;
+
+  // WebhookReceivers describes the status of cluster-scoped webhook receivers.
+  repeated WebhookReceiverDetails webhookReceivers = 2;
 }
 
 message ClusterPromotionTask {
@@ -231,6 +428,11 @@ message DiscoveredArtifacts {
   //
   // +optional
   repeated ChartDiscoveryResult charts = 3;
+
+  // Results holds the artifact references discovered by the Warehouse.
+  //
+  // +optional
+  repeated DiscoveryResult results = 5;
 }
 
 // DiscoveredCommit represents a commit discovered by a Warehouse for a
@@ -273,22 +475,76 @@ message DiscoveredImageReference {
   // +kubebuilder:validation:MinLength=1
   // +kubebuilder:validation:MaxLength=128
   // +kubebuilder:validation:Pattern=`^[\w.\-\_]+$`
+  // +akuity:test-kubebuilder-pattern=Tag
   optional string tag = 1;
 
   // Digest is the digest of the image.
   //
   // +kubebuilder:validation:MinLength=1
   // +kubebuilder:validation:Pattern=`^[a-z0-9]+:[a-f0-9]+$`
+  // +akuity:test-kubebuilder-pattern=Digest
   optional string digest = 2;
 
-  // GitRepoURL is the URL of the Git repository that contains the source
-  // code for this image. This field is optional, and only populated if the
-  // ImageSubscription specifies a GitRepoURL.
-  optional string gitRepoURL = 3;
+  // Annotations is a map of key-value pairs that provide additional
+  // information about the image.
+  map<string, string> annotations = 5;
 
   // CreatedAt is the time the image was created. This field is optional, and
   // not populated for every ImageSelectionStrategy.
   optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time createdAt = 4;
+}
+
+// DiscoveryResult represents the result of an artifact discovery operation for
+// some subscription.
+message DiscoveryResult {
+  // SubscriptionName is the name of the Subscription that discovered these
+  // results.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string name = 3;
+
+  // ArtifactReferences is a list of references to specific versions of an
+  // artifact.
+  //
+  // +optional
+  repeated ArtifactReference artifactReferences = 2;
+}
+
+// DockerHubWebhookReceiverConfig describes a webhook receiver that is
+// compatible with Docker Hub payloads.
+message DockerHubWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose value
+  // does NOT need to be shared directly with Docker Hub when registering a
+  // webhook. It is used only by Kargo to create a complex, hard-to-guess URL,
+  // which implicitly serves as a shared secret. For more information about
+  // Docker Hub webhooks, please refer to the Docker documentation:
+  //   https://docs.docker.com/docker-hub/webhooks/
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+}
+
+// ExpressionVariable describes a single variable that may be referenced by
+// expressions in the context of a ClusterPromotionTask, PromotionTask,
+// Promotion, AnalysisRun arguments, or other objects that support expressions.
+//
+// It is used to pass information to the expression evaluation engine, and to
+// allow for dynamic evaluation of expressions based on the variable values.
+message ExpressionVariable {
+  // Name is the name of the variable.
+  //
+  // +kubebuilder:validation:MinLength=1
+  // +kubebuilder:validation:Pattern=^[a-zA-Z_]\w*$
+  optional string name = 1;
+
+  // Value is the value of the variable. It is allowed to utilize expressions
+  // in the value.
+  // See https://docs.kargo.io/user-guide/reference-docs/expressions for details.
+  optional string value = 2;
 }
 
 // Freight represents a collection of versioned artifacts.
@@ -320,6 +576,10 @@ message Freight {
   // Charts describes specific versions of specific Helm charts.
   repeated Chart charts = 5;
 
+  // Artifacts describes specific versions of artifacts other
+  // than Git repository commits, container images, and Helm charts.
+  repeated ArtifactReference artifacts = 10;
+
   // Status describes the current status of this Freight.
   optional FreightStatus status = 6;
 }
@@ -339,6 +599,14 @@ message FreightCollection {
   // VerificationHistory is a stack of recent VerificationInfo. By default,
   // the last ten VerificationInfo are stored.
   repeated VerificationInfo verificationHistory = 2;
+}
+
+// FreightCreationCriteria defines criteria that must be satisfied for Freight
+// to be created automatically from new artifacts following discovery.
+message FreightCreationCriteria {
+  // Expression is an expr-lang expression that must evaluate to true for
+  // Freight to be created automatically from new artifacts following discovery.
+  optional string expression = 1;
 }
 
 // FreightList is a list of Freight resources.
@@ -369,9 +637,9 @@ message FreightOrigin {
 // FreightReference is a simplified representation of a piece of Freight -- not
 // a root resource type.
 message FreightReference {
-  // Name is system-assigned identifier that is derived deterministically from
-  // the contents of the Freight. i.e. Two pieces of Freight can be compared for
-  // equality by comparing their Names.
+  // Name is a system-assigned identifier derived deterministically from
+  // the contents of the Freight. I.e., two pieces of Freight can be compared
+  // for equality by comparing their Names.
   optional string name = 1;
 
   // Origin describes a kind of Freight in terms of its origin.
@@ -385,6 +653,10 @@ message FreightReference {
 
   // Charts describes specific versions of specific Helm charts.
   repeated Chart charts = 4;
+
+  // Artifacts describes specific versions of artifacts other
+  // than Git repository commits, container images, and Helm charts.
+  repeated ArtifactReference artifacts = 9;
 }
 
 // FreightRequest expresses a Stage's need for Freight having originated from a
@@ -424,8 +696,29 @@ message FreightSources {
   // requirement.
   //
   // +kubebuilder:validation:Type=string
-  // +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(s|m|h))+$"
+  // +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(s|m|h))+$`
+  // +akuity:test-kubebuilder-pattern=Duration
   optional .k8s.io.apimachinery.pkg.apis.meta.v1.Duration requiredSoakTime = 3;
+
+  // AvailabilityStrategy specifies the semantics for how requested Freight is
+  // made available to the Stage. This field is optional. When left unspecified,
+  // the field is implicitly treated as if its value were "OneOf".
+  //
+  // Accepted Values:
+  //
+  // - "All": Freight must be verified and, if applicable, soaked in all
+  //   upstream Stages to be considered available for promotion.
+  // - "OneOf": Freight must be verified and, if applicable, soaked in at least
+  //    one upstream Stage to be considered available for promotion.
+  // - "": Treated the same as "OneOf".
+  //
+  // +kubebuilder:validation:Optional
+  optional string availabilityStrategy = 4;
+
+  // AutoPromotionOptions specifies options pertaining to auto-promotion. These
+  // settings have no effect if auto-promotion is not enabled for this Stage at
+  // the ProjectConfig level.
+  optional AutoPromotionOptions autoPromotionOptions = 5;
 }
 
 // FreightStatus describes a piece of Freight's most recently observed state.
@@ -442,6 +735,120 @@ message FreightStatus {
   // might wish to promote a piece of Freight to a given Stage without
   // transiting the entire pipeline.
   map<string, ApprovedStage> approvedFor = 2;
+
+  // Metadata is a map of arbitrary metadata associated with the Freight.
+  // This is useful for storing additional information about the Freight
+  // or Promotion that can be shared across steps or stages.
+  map<string, .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON> metadata = 4;
+}
+
+// GenericWebhookAction describes an action to be performed on a resource
+// and the conditions under which it should be performed.
+message GenericWebhookAction {
+  // ActionType indicates the type of action to be performed. `Refresh` is the
+  // only currently supported action.
+  //
+  // +kubebuilder:validation:Enum=Refresh;
+  optional string action = 1;
+
+  // WhenExpression defines criteria that a request must meet to run this
+  // action.
+  //
+  // +optional
+  optional string whenExpression = 2;
+
+  // Parameters contains additional, action-specific parameters. Values may be
+  // static or extracted from the request using expressions.
+  //
+  // +optional
+  map<string, string> parameters = 3;
+
+  // TargetSelectionCriteria is a list of selection criteria for the resources on which the
+  // action should be performed.
+  //
+  // +kubebuilder:validation:MinItems=1
+  repeated GenericWebhookTargetSelectionCriteria targets = 4;
+}
+
+// GenericWebhookReceiverConfig describes a generic webhook receiver that can be
+// configured to respond to any arbitrary POST by applying user-defined actions
+// on user-defined sets of resources selected by name, labels and/or values in pre-built indices.
+// Both types of selectors support using values extracted from the request by
+// means of expressions. Currently, refreshing resources is the only supported
+// action and Warehouse is the only supported kind. "Refreshing" means
+// immediately enqueuing the target resource for reconciliation by its
+// controller. The practical effect of refreshing a Warehouses is triggering its
+// artifact discovery process.
+message GenericWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose value
+  // does NOT need to be shared directly with the sender. It is used only by
+  // Kargo to create a complex, hard-to-guess URL, which implicitly serves as a
+  // shared secret.
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+
+  // Actions is a list of actions to be performed when a webhook event is received.
+  //
+  // +kubebuilder:validation:MinItems=1
+  repeated GenericWebhookAction actions = 2;
+}
+
+// GenericWebhookTargetSelectionCriteria describes selection criteria for resources to which some
+// action is to be applied. Name, LabelSelector, and IndexSelector are all optional
+// however, at least one must be specified. When multiple criteria are specified, the
+// results are the combined (logical AND) of the criteria.
+message GenericWebhookTargetSelectionCriteria {
+  // Kind is the kind of the target resource.
+  //
+  // +kubebuilder:validation:Enum=Warehouse;
+  optional string kind = 1;
+
+  // Name is the name of the target resource. If LabelSelector and/or IndexSelectors
+  // are also specified, the results are the combined (logical AND) of the criteria.
+  //
+  // +optional
+  optional string name = 2;
+
+  // LabelSelector is a label selector to identify the target resources.
+  // If used with IndexSelector and/or Name, the results are the combined (logical AND) of all the criteria.
+  //
+  // +optional
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.LabelSelector labelSelector = 3;
+
+  // IndexSelector is a selector used to identify cached target resources by cache key.
+  // If used with LabelSelector and/or Name, the results are the combined (logical AND) of all the criteria.
+  //
+  // +optional
+  optional IndexSelector indexSelector = 4;
+}
+
+// GitClientConfig describes cluster-level configuration for Kargo's Git
+// client.
+message GitClientConfig {
+  // Name is the name used for Git commits made by Kargo.
+  // +kubebuilder:validation:Required
+  // +kubebuilder:validation:MinLength=1
+  optional string name = 1;
+
+  // Email is the email address used for Git commits made by Kargo.
+  // +kubebuilder:validation:Required
+  // +kubebuilder:validation:MinLength=1
+  // +kubebuilder:validation:Format="email"
+  optional string email = 2;
+
+  // SigningKeySecret references a Secret in the system namespace containing
+  // a GPG signing key for commit signing. The Secret must contain a data
+  // key named "signingKey" with the GPG private key material.
+  // +optional
+  optional .k8s.io.api.core.v1.LocalObjectReference signingKeySecret = 3;
 }
 
 // GitCommit describes a specific commit from a specific Git repository.
@@ -476,8 +883,11 @@ message GitCommit {
 message GitDiscoveryResult {
   // RepoURL is the repository URL of the GitSubscription.
   //
+  // TODO(v1.13.0): Remove SSH/SCP-style URL support from this pattern.
+  //
   // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=`(?:^(https?)://(?:([\w-]+):(.+)@)?([\w-]+(?:\.[\w-]+)*)(?::(\d{1,5}))?(/.*)$)|(?:^([\w-]+)@([\w+]+(?:\.[\w-]+)*):(/?.*))`
+  // +kubebuilder:validation:Pattern=`(?:^(ssh|https?)://(?:([\w-]+)(:(.+))?@)?([\w-]+(?:\.[\w-]+)*)(?::(\d{1,5}))?(/.*)$)|(?:^([\w-]+)@([\w+]+(?:\.[\w-]+)*):(/?.*))`
+  // +akuity:test-kubebuilder-pattern=GitRepoURLPattern
   optional string repoURL = 1;
 
   // Commits is a list of commits discovered by the Warehouse for the
@@ -488,119 +898,153 @@ message GitDiscoveryResult {
   repeated DiscoveredCommit commits = 2;
 }
 
+// GitHubWebhookReceiverConfig describes a webhook receiver that is compatible
+// with GitHub payloads.
+message GitHubWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose value is
+  // the shared secret used to authenticate the webhook requests sent by GitHub.
+  // For more information please refer to GitHub documentation:
+  //   https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+}
+
+// GitLabWebhookReceiverConfig describes a webhook receiver that is compatible
+// with GitLab payloads.
+message GitLabWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
+  //
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The secret is expected to contain a `secret-token` key containing the
+  // shared secret specified when registering the webhook in GitLab. For more
+  // information about this token, please refer to the GitLab documentation:
+  //   https://docs.gitlab.com/user/project/integrations/webhooks/
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+}
+
 // GitSubscription defines a subscription to a Git repository.
 message GitSubscription {
-  // URL is the repository's URL. This is a required field.
-  //
-  // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=`(?:^(https?)://(?:([\w-]+):(.+)@)?([\w-]+(?:\.[\w-]+)*)(?::(\d{1,5}))?(/.*)$)|(?:^([\w-]+)@([\w+]+(?:\.[\w-]+)*):(/?.*))`
-  optional string repoURL = 1;
+  // AllowTags is a regular expression that can optionally be used to limit the tags that are
+  // considered in determining the newest commit of interest. Deprecated: Use allowTagsRegexes
+  // instead.
+  optional string allowTags = 1;
 
-  // CommitSelectionStrategy specifies the rules for how to identify the newest
-  // commit of interest in the repository specified by the RepoURL field. This
-  // field is optional. When left unspecified, the field is implicitly treated
-  // as if its value were "NewestFromBranch".
-  // Accepted values: Lexical, NewestFromBranch, NewestTag, SemVer
-  //
-  // +kubebuilder:default=NewestFromBranch
-  optional string commitSelectionStrategy = 2;
+  // AllowTagsRegexes is a list of regular expressions that can optionally be used to limit
+  // the tags that are considered. Only has effect when CommitSelectionStrategy is Lexical,
+  // NewestTag, or SemVer.
+  repeated string allowTagsRegexes = 2;
 
-  // Branch references a particular branch of the repository. The value in this
-  // field only has any effect when the CommitSelectionStrategy is
-  // NewestFromBranch or left unspecified (which is implicitly the same as
-  // NewestFromBranch). This field is optional. When left unspecified, (and the
-  // CommitSelectionStrategy is NewestFromBranch or unspecified), the
-  // subscription is implicitly to the repository's default branch.
-  //
-  // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=`^\w+([-/\.]\w+)*$`
+  // Branch references a particular branch of the repository. Only has effect when
+  // CommitSelectionStrategy is NewestFromBranch or unspecified. When left unspecified, the
+  // subscription is implicitly to the repository's default branch. Must be a valid branch
+  // name.
   optional string branch = 3;
 
-  // StrictSemvers specifies whether only "strict" semver tags should be
-  // considered. A "strict" semver tag is one containing ALL of major, minor,
-  // and patch version components. This is enabled by default, but only has any
-  // effect when the CommitSelectionStrategy is SemVer. This should be disabled
-  // cautiously, as it creates the potential for any tag containing numeric
-  // characters only to be mistaken for a semver string containing the major
-  // version number only.
+  // CommitSelectionStrategy specifies the rules for how to identify the newest commit of
+  // interest in the repository specified by the RepoURL field.
+  optional string commitSelectionStrategy = 4;
+
+  // DiscoveryLimit is an optional limit on the number of commits that can be discovered for
+  // this subscription. The upper limit is 100.
+  optional int64 discoveryLimit = 5;
+
+  // ExcludePaths is a list of selectors that designate paths in the repository that should
+  // NOT trigger the production of new Freight when changes are detected therein.
+  repeated string excludePaths = 6;
+
+  // ExpressionFilter is an expression that can optionally be used to limit the commits or
+  // tags that are considered in determining the newest commit of interest based on their
+  // metadata.
+  optional string expressionFilter = 7;
+
+  // IgnoreTags is a list of tags that must be ignored when determining the newest commit of
+  // interest. Deprecated: Use ignoreTagsRegexes instead.
+  repeated string ignoreTags = 8;
+
+  // IgnoreTagsRegexes is a list of regular expressions that can optionally be used to exclude
+  // tags from consideration. Only has effect when CommitSelectionStrategy is Lexical,
+  // NewestTag, or SemVer.
+  repeated string ignoreTagsRegexes = 9;
+
+  // IncludePaths is a list of selectors that designate paths in the repository that should
+  // trigger the production of new Freight when changes are detected therein.
+  repeated string includePaths = 10;
+
+  // InsecureSkipTLSVerify specifies whether certificate verification errors should be ignored
+  // when connecting to the repository. This should be enabled only with great caution.
+  optional bool insecureSkipTLSVerify = 11;
+
+  // URL is the repository's URL. This is a required field. Deprecated: Support for SSH URLs
+  // (ssh:// and SCP-style git@host:path) is deprecated as of v1.10.0 and will be removed in
+  // v1.13.0. Use HTTPS URLs instead.
+  optional string repoURL = 12;
+
+  // SemverConstraint specifies constraints on what new tagged commits are considered in
+  // determining the newest commit of interest. Only has effect when CommitSelectionStrategy
+  // is SemVer.
+  optional string semverConstraint = 13;
+
+  // An optional date (RFC 3339) that limits commit discovery to commits at or after this
+  // date. When specified, discovery stops upon reaching a commit older than this date. When
+  // left unspecified, there is no cutoff.
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time since = 14;
+
+  // StrictSemvers specifies whether only "strict" semver tags should be considered. A
+  // "strict" semver tag contains ALL of major, minor, and patch version components. Only has
+  // effect when CommitSelectionStrategy is SemVer.
+  optional bool strictSemvers = 15;
+}
+
+// GiteaWebhookReceiverConfig describes a webhook receiver that is compatible
+// with Gitea payloads.
+message GiteaWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
   //
-  // +kubebuilder:default=true
-  optional bool strictSemvers = 11;
-
-  // SemverConstraint specifies constraints on what new tagged commits are
-  // considered in determining the newest commit of interest. The value in this
-  // field only has any effect when the CommitSelectionStrategy is SemVer. This
-  // field is optional. When left unspecified, there will be no constraints,
-  // which means the latest semantically tagged commit will always be used. Care
-  // should be taken with leaving this field unspecified, as it can lead to the
-  // unanticipated rollout of breaking changes.
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
   //
-  // +kubebuilder:validation:Optional
-  optional string semverConstraint = 4;
-
-  // AllowTags is a regular expression that can optionally be used to limit the
-  // tags that are considered in determining the newest commit of interest. The
-  // value in this field only has any effect when the CommitSelectionStrategy is
-  // Lexical, NewestTag, or SemVer. This field is optional.
+  // The Secret's data map is expected to contain a `secret` key whose value is
+  // the shared secret used to authenticate the webhook requests sent by Gitea.
+  // For more information please refer to the Gitea documentation:
+  //   https://docs.gitea.io/en-us/webhooks/
   //
-  // +kubebuilder:validation:Optional
-  optional string allowTags = 5;
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
+}
 
-  // IgnoreTags is a list of tags that must be ignored when determining the
-  // newest commit of interest. No regular expressions or glob patterns are
-  // supported yet. The value in this field only has any effect when the
-  // CommitSelectionStrategy is Lexical, NewestTag, or SemVer. This field is
-  // optional.
+// HarborWebhookReceiverConfig describes a webhook receiver that is compatible
+// with Harbor payloads.
+message HarborWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
   //
-  // +kubebuilder:validation:Optional
-  repeated string ignoreTags = 6;
-
-  // InsecureSkipTLSVerify specifies whether certificate verification errors
-  // should be ignored when connecting to the repository. This should be enabled
-  // only with great caution.
-  optional bool insecureSkipTLSVerify = 7;
-
-  // IncludePaths is a list of selectors that designate paths in the repository
-  // that should trigger the production of new Freight when changes are detected
-  // therein. When specified, only changes in the identified paths will trigger
-  // Freight production. When not specified, changes in any path will trigger
-  // Freight production. Selectors may be defined using:
-  //   1. Exact paths to files or directories (ex. "charts/foo")
-  //   2. Glob patterns (prefix the pattern with "glob:"; ex. "glob:*.yaml")
-  //   3. Regular expressions (prefix the pattern with "regex:" or "regexp:";
-  //      ex. "regexp:^.*\.yaml$")
-  // Paths selected by IncludePaths may be unselected by ExcludePaths. This
-  // is a useful method for including a broad set of paths and then excluding a
-  // subset of them.
-  // +kubebuilder:validation:Optional
-  repeated string includePaths = 8;
-
-  // ExcludePaths is a list of selectors that designate paths in the repository
-  // that should NOT trigger the production of new Freight when changes are
-  // detected therein. When specified, changes in the identified paths will not
-  // trigger Freight production. When not specified, paths that should trigger
-  // Freight production will be defined solely by IncludePaths. Selectors may be
-  // defined using:
-  //   1. Exact paths to files or directories (ex. "charts/foo")
-  //   2. Glob patterns (prefix the pattern with "glob:"; ex. "glob:*.yaml")
-  //   3. Regular expressions (prefix the pattern with "regex:" or "regexp:";
-  //      ex. "regexp:^.*\.yaml$")
-  // Paths selected by IncludePaths may be unselected by ExcludePaths. This
-  // is a useful method for including a broad set of paths and then excluding a
-  // subset of them.
-  // +kubebuilder:validation:Optional
-  repeated string excludePaths = 9;
-
-  // DiscoveryLimit is an optional limit on the number of commits that can be
-  // discovered for this subscription. The limit is applied after filtering
-  // commits based on the AllowTags and IgnoreTags fields.
-  // When left unspecified, the field is implicitly treated as if its value
-  // were "20". The upper limit for this field is 100.
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
   //
-  // +kubebuilder:validation:Minimum=1
-  // +kubebuilder:validation:Maximum=100
-  // +kubebuilder:default=20
-  optional int32 discoveryLimit = 10;
+  // The secret is expected to contain an `auth-header` key containing the "auth
+  // header" specified when registering the webhook in Harbor. For more
+  // information, please refer to the Harbor documentation:
+  //   https://goharbor.io/docs/main/working-with-projects/project-configuration/configure-webhooks/
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
 }
 
 // Health describes the health of a Stage.
@@ -632,15 +1076,17 @@ message HealthCheckStep {
   optional .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON config = 2;
 }
 
+// HealthStats contains a summary of the collective health of some resource
+// type.
+message HealthStats {
+  // Healthy contains the number of resources that are explicitly healthy.
+  optional int64 healthy = 1;
+}
+
 // Image describes a specific version of a container image.
 message Image {
   // RepoURL describes the repository in which the image can be found.
   optional string repoURL = 1;
-
-  // GitRepoURL specifies the URL of a Git repository that contains the source
-  // code for the image repository referenced by the RepoURL field if Kargo was
-  // able to infer it.
-  optional string gitRepoURL = 2;
 
   // Tag identifies a specific version of the image in the repository specified
   // by RepoURL.
@@ -649,6 +1095,9 @@ message Image {
   // Digest identifies a specific version of the image in the repository
   // specified by RepoURL. This is a more precise identifier than Tag.
   optional string digest = 4;
+
+  // Annotations is a map of arbitrary metadata for the image.
+  map<string, string> annotations = 5;
 }
 
 // ImageDiscoveryResult represents the result of an image discovery operation
@@ -674,100 +1123,104 @@ message ImageDiscoveryResult {
   repeated DiscoveredImageReference references = 3;
 }
 
-// ImageSubscription defines a subscription to an image repository.
+// ImageSubscription defines a subscription to a container image repository.
 message ImageSubscription {
-  // RepoURL specifies the URL of the image repository to subscribe to. The
-  // value in this field MUST NOT include an image tag. This field is required.
-  //
-  // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=`^(\w+([\.-]\w+)*(:[\d]+)?/)?(\w+([\.-]\w+)*)(/\w+([\.-]\w+)*)*$`
-  optional string repoURL = 1;
+  // AllowTags is a regular expression that can optionally be used to limit the image tags
+  // that are considered in determining the newest version of an image. This field is
+  // optional. Deprecated: Use allowTagsRegexes instead. Beginning in v1.11.0, artifact
+  // discovery will FAIL if this field is non-empty. This field will be removed in v1.13.0.
+  optional string allowTags = 1;
 
-  // GitRepoURL optionally specifies the URL of a Git repository that contains
-  // the source code for the image repository referenced by the RepoURL field.
-  // When this is specified, Kargo MAY be able to infer and link to the exact
-  // revision of that source code that was used to build the image.
-  //
-  // +kubebuilder:validation:Optional
-  // +kubebuilder:validation:Pattern=`^https?://(\w+([\.-]\w+)*@)?\w+([\.-]\w+)*(:[\d]+)?(/.*)?$`
-  optional string gitRepoURL = 2;
+  // AllowTagsRegexes is a list of regular expressions that can optionally be used to limit
+  // the image tags that are considered in determining the newest revision of an image. This
+  // field is optional.
+  repeated string allowTagsRegexes = 2;
 
-  // ImageSelectionStrategy specifies the rules for how to identify the newest version
-  // of the image specified by the RepoURL field. This field is optional. When
-  // left unspecified, the field is implicitly treated as if its value were
-  // "SemVer".
-  // Accepted values: Digest, Lexical, NewestBuild, SemVer
-  //
-  // +kubebuilder:default=SemVer
-  optional string imageSelectionStrategy = 3;
+  // CacheByTag specifies whether to cache image metadata by tag. This can improve performance
+  // but may lead to stale data if mutable tags are used.
+  optional bool cacheByTag = 3;
 
-  // StrictSemvers specifies whether only "strict" semver tags should be
-  // considered. A "strict" semver tag is one containing ALL of major, minor,
-  // and patch version components. This is enabled by default, but only has any
-  // effect when the ImageSelectionStrategy is SemVer. This should be disabled
-  // cautiously, as it is not uncommon to tag container images with short Git
-  // commit hashes, which have the potential to contain numeric characters only
-  // and could be mistaken for a semver string containing the major version
-  // number only.
-  //
-  // +kubebuilder:default=true
-  optional bool strictSemvers = 10;
+  // Constraint specifies ImageSelectionStrategy-specific constraints on what new image
+  // revisions are permissible. Acceptable values for this field vary contextually by
+  // ImageSelectionStrategy. The field is optional for some strategies. Others either require
+  // it or ignore it. For strategies that treat this field as optional, specifying no value
+  // means "no constraints."
+  optional string constraint = 4;
 
-  // SemverConstraint specifies constraints on what new image versions are
-  // permissible. The value in this field only has any effect when the
-  // ImageSelectionStrategy is SemVer or left unspecified (which is implicitly
-  // the same as SemVer). This field is also optional. When left unspecified,
-  // (and the ImageSelectionStrategy is SemVer or unspecified), there will be no
-  // constraints, which means the latest semantically tagged version of an image
-  // will always be used. Care should be taken with leaving this field
-  // unspecified, as it can lead to the unanticipated rollout of breaking
-  // changes.
-  // More info: https://github.com/masterminds/semver#checking-version-constraints
-  //
-  // +kubebuilder:validation:Optional
-  optional string semverConstraint = 4;
+  // DiscoveryLimit is an optional limit on the number of image references that can be
+  // discovered for this subscription. The limit is applied after filtering images based on
+  // the AllowTagsRegexes and IgnoreTagsRegexes fields. When left unspecified, the field is
+  // implicitly treated as if its value were "20". The upper limit for this field is 100.
+  optional int64 discoveryLimit = 5;
 
-  // AllowTags is a regular expression that can optionally be used to limit the
-  // image tags that are considered in determining the newest version of an
-  // image. This field is optional.
-  //
-  // +kubebuilder:validation:Optional
-  optional string allowTags = 5;
-
-  // IgnoreTags is a list of tags that must be ignored when determining the
-  // newest version of an image. No regular expressions or glob patterns are
-  // supported yet. This field is optional.
-  //
-  // +kubebuilder:validation:Optional
+  // IgnoreTags is a list of tags that must be ignored when determining the newest version of
+  // an image. No regular expressions or glob patterns are supported yet. This field is
+  // optional. Deprecated: Use ignoreTagsRegexes instead. Beginning in v1.11.0, artifact
+  // discovery will FAIL if this field is non-empty. This field will be removed in v1.13.0.
   repeated string ignoreTags = 6;
 
-  // Platform is a string of the form <os>/<arch> that limits the tags that can
-  // be considered when searching for new versions of an image. This field is
-  // optional. When left unspecified, it is implicitly equivalent to the
-  // OS/architecture of the Kargo controller. Care should be taken to set this
-  // value correctly in cases where the image referenced by this
-  // ImageRepositorySubscription will run on a Kubernetes node with a different
-  // OS/architecture than the Kargo controller. At present this is uncommon, but
-  // not unheard of.
-  //
-  // +kubebuilder:validation:Optional
-  optional string platform = 7;
+  // IgnoreTagsRegexes is a list of regular expressions that can optionally be used to exclude
+  // tags from consideration when determining the newest revision of an image. This field is
+  // optional.
+  repeated string ignoreTagsRegexes = 7;
 
-  // InsecureSkipTLSVerify specifies whether certificate verification errors
-  // should be ignored when connecting to the repository. This should be enabled
-  // only with great caution.
-  optional bool insecureSkipTLSVerify = 8;
+  // ImageSelectionStrategy specifies the rules for how to identify the newest version of the
+  // image specified by the RepoURL field. This field is optional. When left unspecified, the
+  // field is implicitly treated as if its value were "SemVer". Accepted values: "Digest",
+  // "Lexical", "NewestBuild", "SemVer".
+  optional string imageSelectionStrategy = 8;
 
-  // DiscoveryLimit is an optional limit on the number of image references
-  // that can be discovered for this subscription. The limit is applied after
-  // filtering images based on the AllowTags and IgnoreTags fields.
-  // When left unspecified, the field is implicitly treated as if its value
-  // were "20". The upper limit for this field is 100.
+  // InsecureSkipTLSVerify specifies whether certificate verification errors should be ignored
+  // when connecting to the repository. This should be enabled only with great caution.
+  optional bool insecureSkipTLSVerify = 9;
+
+  // Platform is a string of the form <os>/<arch> that limits the tags that can be considered
+  // when searching for new versions of an image. This field is optional. When left
+  // unspecified, it is implicitly equivalent to the OS/architecture of the Kargo controller.
+  // Care should be taken to set this value correctly in cases where the image will run on a
+  // Kubernetes node with a different OS/architecture than the Kargo controller.
+  optional string platform = 10;
+
+  // RepoURL specifies the URL of the image repository to subscribe to. The value in this
+  // field MUST NOT include an image tag. This field is required.
+  optional string repoURL = 11;
+
+  // StrictSemvers specifies whether only "strict" semver tags should be considered. A
+  // "strict" semver tag is one containing ALL of major, minor, and patch version components.
+  // This is enabled by default, but only has any effect when the ImageSelectionStrategy is
+  // SemVer. This should be disabled cautiously, as it is not uncommon to tag container images
+  // with short Git commit hashes, which could be mistaken for a semver string containing the
+  // major version number only.
+  optional bool strictSemvers = 12;
+}
+
+// IndexSelector defines selection criteria that match resources on the basis of
+// values in pre-built, well-known indices.
+message IndexSelector {
+  // MatchIndices is a list of index selector requirements.
   //
-  // +kubebuilder:validation:Minimum=1
-  // +kubebuilder:validation:Maximum=100
-  // +kubebuilder:default=20
-  optional int32 discoveryLimit = 9;
+  // +kubebuilder:validation:MinItems=1
+  repeated IndexSelectorRequirement matchIndices = 1;
+}
+
+// IndexSelectorRequirement encapsulates a requirement used to select indexes
+// based on specific criteria.
+message IndexSelectorRequirement {
+  // Key is the key of the index.
+  //
+  // +kubebuilder:validation:Enum=subscribedURLs;receiverPaths
+  optional string key = 1;
+
+  // Operator indicates the operation that should be used to evaluate
+  // whether the selection requirement is satisfied.
+  //
+  // kubebuilder:validation:Enum=Equal;NotEqual;
+  optional string operator = 2;
+
+  // Value can be a static string or an expression that will be evaluated.
+  //
+  // kubebuilder:validation:Required
+  optional string value = 3;
 }
 
 // Project is a resource type that reconciles to a specially labeled namespace
@@ -775,11 +1228,64 @@ message ImageSubscription {
 message Project {
   optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
-  // Spec describes a Project.
-  optional ProjectSpec spec = 2;
-
   // Status describes the Project's current status.
   optional ProjectStatus status = 3;
+}
+
+// ProjectConfig is a resource type that describes the configuration of a
+// Project.
+message ProjectConfig {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+
+  // Spec describes the configuration of a Project.
+  optional ProjectConfigSpec spec = 2;
+
+  // Status describes the current status of a ProjectConfig.
+  optional ProjectConfigStatus status = 3;
+}
+
+// ProjectConfigList is a list of ProjectConfig resources.
+message ProjectConfigList {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+
+  repeated ProjectConfig items = 2;
+}
+
+// ProjectConfigSpec describes the configuration of a Project.
+message ProjectConfigSpec {
+  // PromotionPolicies defines policies governing the promotion of Freight to
+  // specific Stages within the Project.
+  repeated PromotionPolicy promotionPolicies = 1;
+
+  // WebhookReceivers describes Project-specific webhook receivers used for
+  // processing events from various external platforms
+  repeated WebhookReceiverConfig webhookReceivers = 2;
+}
+
+// ProjectConfigStatus describes the current status of a ProjectConfig.
+message ProjectConfigStatus {
+  // Conditions contains the last observations of the Project Config's current
+  // state.
+  //
+  // +patchMergeKey=type
+  // +patchStrategy=merge
+  // +listType=map
+  // +listMapKey=type
+  repeated .k8s.io.apimachinery.pkg.apis.meta.v1.Condition conditions = 1;
+
+  // ObservedGeneration represents the .metadata.generation that this
+  // ProjectConfig was reconciled against.
+  optional int64 observedGeneration = 3;
+
+  // LastHandledRefresh holds the value of the most recent AnnotationKeyRefresh
+  // annotation that was handled by the controller. This field can be used to
+  // determine whether the request to refresh the resource has been handled.
+  // +optional
+  optional string lastHandledRefresh = 4;
+
+  // WebhookReceivers describes the status of Project-specific webhook
+  // receivers.
+  repeated WebhookReceiverDetails webhookReceivers = 2;
 }
 
 // ProjectList is a list of Project resources.
@@ -789,11 +1295,15 @@ message ProjectList {
   repeated Project items = 2;
 }
 
-// ProjectSpec describes a Project.
-message ProjectSpec {
-  // PromotionPolicies defines policies governing the promotion of Freight to
-  // specific Stages within this Project.
-  repeated PromotionPolicy promotionPolicies = 1;
+// ProjectStats contains a summary of the collective state of a Project's
+// constituent resources.
+message ProjectStats {
+  // Warehouses contains a summary of the collective state of the Project's
+  // Warehouses.
+  optional WarehouseStats warehouses = 1;
+
+  // Stages contains a summary of the collective state of the Project's Stages.
+  optional StageStats stages = 2;
 }
 
 // ProjectStatus describes a Project's current status.
@@ -806,17 +1316,9 @@ message ProjectStatus {
   // +listMapKey=type
   repeated .k8s.io.apimachinery.pkg.apis.meta.v1.Condition conditions = 3;
 
-  // Phase describes the Project's current phase.
-  //
-  // Deprecated: Use the Conditions field instead.
-  optional string phase = 1;
-
-  // Message is a display message about the Project, including any errors
-  // preventing the Project from being reconciled. i.e. If the Phase field has a
-  // value of CreationFailed, this field can be expected to explain why.
-  //
-  // Deprecated: Use the Conditions field instead.
-  optional string message = 2;
+  // Stats contains a summary of the collective state of a Project's
+  // constituent resources.
+  optional ProjectStats stats = 4;
 }
 
 // Promotion represents a request to transition a particular Stage into a
@@ -844,10 +1346,19 @@ message PromotionList {
 
 // PromotionPolicy defines policies governing the promotion of Freight to a
 // specific Stage.
+//
+// +kubebuilder:validation:XValidation:message="PromotionPolicy must have exactly one of stage or stageSelector set",rule="has(self.stage) ? !has(self.stageSelector) : has(self.stageSelector)"
 message PromotionPolicy {
-  // +kubebuilder:validation:MinLength=1
+  // Stage is the name of the Stage to which this policy applies.
+  //
+  // Deprecated: Use StageSelector instead.
+  //
   // +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
   optional string stage = 1;
+
+  // StageSelector is a selector that matches the Stage resource to which
+  // this policy applies.
+  optional PromotionPolicySelector stageSelector = 3;
 
   // AutoPromotionEnabled indicates whether new Freight can automatically be
   // promoted into the Stage referenced by the Stage field. Note: There are may
@@ -857,6 +1368,43 @@ message PromotionPolicy {
   // users to define Stages that are automatically updated as soon as new
   // artifacts are detected.
   optional bool autoPromotionEnabled = 2;
+}
+
+// PromotionPolicySelector is a selector that matches the resource to which
+// this policy applies. It can be used to match a specific resource by name or
+// to match a set of resources by label.
+message PromotionPolicySelector {
+  // Name is the name of the resource to which this policy applies.
+  //
+  // It can be an exact name, a regex pattern (with prefix "regex:"), or a
+  // glob pattern (with prefix "glob:").
+  //
+  // When both Name and LabelSelector are specified, the Name is ANDed with
+  // the LabelSelector. I.e., the resource must match both the Name and
+  // LabelSelector to be selected by this policy.
+  //
+  // NOTE: Using a specific exact name is the most secure option. Pattern
+  // matching via regex or glob can be exploited by users with permissions to
+  // match promotion policies that weren't intended to apply to their
+  // resources. For example, a user could create a resource with a name
+  // deliberately crafted to match the pattern, potentially bypassing intended
+  // promotion controls.
+  //
+  // +optional
+  optional string name = 1;
+
+  // LabelSelector is a selector that matches the resource to which this policy
+  // applies.
+  //
+  // When both Name and LabelSelector are specified, the Name is ANDed with
+  // the LabelSelector. I.e., the resource must match both the Name and
+  // LabelSelector to be selected by this policy.
+  //
+  // NOTE: Using label selectors introduces security risks as users with
+  // appropriate permissions could create new resources with labels that match
+  // the selector, potentially enabling unauthorized auto-promotion.
+  // For sensitive environments, exact Name matching provides tighter control.
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.LabelSelector labelSelector = 2;
 }
 
 // PromotionReference contains the relevant information about a Promotion
@@ -885,7 +1433,8 @@ message PromotionSpec {
   // +kubebuilder:validation:Required
   // +kubebuilder:validation:MinLength=1
   // +kubebuilder:validation:MaxLength=253
-  // +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+  // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+  // +akuity:test-kubebuilder-pattern=KubernetesName
   optional string stage = 1;
 
   // Freight specifies the piece of Freight to be promoted into the Stage
@@ -894,12 +1443,13 @@ message PromotionSpec {
   // +kubebuilder:validation:Required
   // +kubebuilder:validation:MinLength=1
   // +kubebuilder:validation:MaxLength=253
-  // +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+  // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+  // +akuity:test-kubebuilder-pattern=KubernetesName
   optional string freight = 2;
 
   // Vars is a list of variables that can be referenced by expressions in
   // promotion steps.
-  repeated PromotionVariable vars = 4;
+  repeated ExpressionVariable vars = 4;
 
   // Steps specifies the directives to be executed as part of this Promotion.
   // The order in which the directives are executed is the order in which they
@@ -941,6 +1491,9 @@ message PromotionStatus {
   // the Promotion has completed.
   repeated HealthCheckStep healthChecks = 8;
 
+  // StartedAt is the time when the promotion started.
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time startedAt = 12;
+
   // FinishedAt is the time when the promotion was completed.
   optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time finishedAt = 6;
 
@@ -973,18 +1526,30 @@ message PromotionStep {
   // As is the alias this step can be referred to as.
   optional string as = 2;
 
+  // If is an optional expression that, if present, must evaluate to a boolean
+  // value. If the expression evaluates to false, the step will be skipped.
+  // If the expression does not evaluate to a boolean value, the step will be
+  // considered to have failed.
+  optional string if = 7;
+
+  // ContinueOnError is a boolean value that, if set to true, will cause the
+  // Promotion to continue executing the next step even if this step fails. It
+  // also will not permit this failure to impact the overall status of the
+  // Promotion.
+  optional bool continueOnError = 8;
+
   // Retry is the retry policy for this step.
   optional PromotionStepRetry retry = 4;
 
   // Vars is a list of variables that can be referenced by expressions in
   // the step's Config. The values override the values specified in the
   // PromotionSpec.
-  repeated PromotionVariable vars = 6;
+  repeated ExpressionVariable vars = 6;
 
   // Config is opaque configuration for the PromotionStep that is understood
   // only by each PromotionStep's implementation. It is legal to utilize
   // expressions in defining values at any level of this block.
-  // See https://docs.kargo.io/references/expression-language for details.
+  // See https://docs.kargo.io/user-guide/reference-docs/expressions for details.
   optional .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON config = 3;
 }
 
@@ -1052,7 +1617,8 @@ message PromotionTaskReference {
   // +kubebuilder:validation:Required
   // +kubebuilder:validation:MinLength=1
   // +kubebuilder:validation:MaxLength=253
-  // +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+  // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+  // +akuity:test-kubebuilder-pattern=KubernetesName
   optional string name = 1;
 
   // Kind is the type of the PromotionTask. Can be either PromotionTask or
@@ -1067,7 +1633,7 @@ message PromotionTaskSpec {
   // Vars specifies the variables available to the PromotionTask. The
   // values of these variables are the default values that can be
   // overridden by the step referencing the task.
-  repeated PromotionVariable vars = 1;
+  repeated ExpressionVariable vars = 1;
 
   // Steps specifies the directives to be executed as part of this
   // PromotionTask. The steps as defined here are inflated into a
@@ -1091,7 +1657,7 @@ message PromotionTemplate {
 message PromotionTemplateSpec {
   // Vars is a list of variables that can be referenced by expressions in
   // promotion steps.
-  repeated PromotionVariable vars = 2;
+  repeated ExpressionVariable vars = 2;
 
   // Steps specifies the directives to be executed as part of a Promotion.
   // The order in which the directives are executed is the order in which they
@@ -1099,26 +1665,34 @@ message PromotionTemplateSpec {
   //
   // +kubebuilder:validation:MinItems=1
   // +kubebuilder:validation:items:XValidation:message="PromotionTemplate step must have exactly one of uses or task set",rule="(has(self.uses) ? !has(self.task) : has(self.task))"
+  // +kubebuilder:validation:items:XValidation:message="PromotionTemplate step referencing a task cannot set continueOnError",rule="!has(self.task) || !has(self.continueOnError)"
+  // +kubebuilder:validation:items:XValidation:message="PromotionTemplate step referencing a task cannot set retry",rule="!has(self.task) || !has(self.retry)"
   repeated PromotionStep steps = 1;
 }
 
-// PromotionVariable describes a single variable that may be referenced by
-// expressions in promotion steps.
-message PromotionVariable {
-  // Name is the name of the variable.
+// QuayWebhookReceiverConfig describes a webhook receiver that is compatible
+// with Quay.io payloads.
+message QuayWebhookReceiverConfig {
+  // SecretRef contains a reference to a Secret. For Project-scoped webhook
+  // receivers, the referenced Secret must be in the same namespace as the
+  // ProjectConfig.
   //
-  // +kubebuilder:validation:MinLength=1
-  // +kubebuilder:validation:Pattern=^[a-zA-Z_]\w*$
-  optional string name = 1;
-
-  // Value is the value of the variable. It is allowed to utilize expressions
-  // in the value.
-  // See https://docs.kargo.io/references/expression-language for details.
-  optional string value = 2;
+  // For cluster-scoped webhook receivers, the referenced Secret must be in the
+  // designated "system resources" namespace.
+  //
+  // The Secret's data map is expected to contain a `secret` key whose value
+  // does NOT need to be shared directly with Quay when registering a
+  // webhook. It is used only by Kargo to create a complex, hard-to-guess URL,
+  // which implicitly serves as a shared secret. For more information about
+  // Quay webhooks, please refer to the Quay documentation:
+  //   https://docs.quay.io/guides/notifications.html
+  //
+  // +kubebuilder:validation:Required
+  optional .k8s.io.api.core.v1.LocalObjectReference secretRef = 1;
 }
 
 // RepoSubscription describes a subscription to ONE OF a Git repository, a
-// container image repository, or a Helm chart repository.
+// container image repository, a Helm chart repository, or something else.
 message RepoSubscription {
   // Git describes a subscriptions to a Git repository.
   optional GitSubscription git = 1;
@@ -1128,6 +1702,10 @@ message RepoSubscription {
 
   // Chart describes a subscription to a Helm chart repository.
   optional ChartSubscription chart = 3;
+
+  // Subscription describes a subscription to something that is not a Git, container
+  // image, or Helm chart repository.
+  optional Subscription subscription = 4;
 }
 
 // Stage is the Kargo API's main type.
@@ -1161,6 +1739,11 @@ message StageSpec {
   // is empty, the webhook will ensure that label is absent.
   optional string shard = 4;
 
+  // Vars is a list of variables that can be referenced anywhere in the
+  // StageSpec that supports expressions. For example, the PromotionTemplate
+  // and arguments of the Verification.
+  repeated ExpressionVariable vars = 7;
+
   // RequestedFreight expresses the Stage's need for certain pieces of Freight,
   // each having originated from a particular Warehouse. This list must be
   // non-empty. In the common case, a Stage will request Freight having
@@ -1182,6 +1765,16 @@ message StageSpec {
   optional Verification verification = 3;
 }
 
+// StageStats contains a summary of the collective state of a Project's
+// Stages.
+message StageStats {
+  // Count contains the total number of Stages in the Project.
+  optional int64 count = 2;
+
+  // Health contains a summary of the collective health of a Project's Stages.
+  optional HealthStats health = 1;
+}
+
 // StageStatus describes a Stages's current and recent Freight, health, and
 // more.
 message StageStatus {
@@ -1198,9 +1791,6 @@ message StageStatus {
   // determine whether the request to refresh the resource has been handled.
   // +optional
   optional string lastHandledRefresh = 11;
-
-  // Phase describes where the Stage currently is in its lifecycle.
-  optional string phase = 1;
 
   // FreightHistory is a list of recent Freight selections that were deployed
   // to the Stage. By default, the last ten Freight selections are stored.
@@ -1223,10 +1813,6 @@ message StageStatus {
   // Health is the Stage's last observed health.
   optional Health health = 8;
 
-  // Message describes any errors that are preventing the Stage controller
-  // from assessing Stage health or from finding new Freight.
-  optional string message = 9;
-
   // ObservedGeneration represents the .metadata.generation that this Stage
   // status was reconciled against.
   optional int64 observedGeneration = 6;
@@ -1236,6 +1822,15 @@ message StageStatus {
 
   // LastPromotion is a reference to the last completed promotion.
   optional PromotionReference lastPromotion = 10;
+
+  // AutoPromotionEnabled indicates whether automatic promotion is enabled
+  // for the Stage based on the ProjectConfig.
+  optional bool autoPromotionEnabled = 14;
+
+  // Metadata is a map of arbitrary metadata associated with the Stage.
+  // This is useful for storing additional information about the Stage
+  // that can be shared across promotions, verifications, or other processes.
+  map<string, .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON> metadata = 15;
 }
 
 // StepExecutionMetadata tracks metadata pertaining to the execution of
@@ -1260,6 +1855,42 @@ message StepExecutionMetadata {
 
   // Message is a display message about the step, including any errors.
   optional string message = 6;
+
+  // ContinueOnError is a boolean value that, if set to true, will cause the
+  // Promotion to continue executing the next step even if this step fails. It
+  // also will not permit this failure to impact the overall status of the
+  // Promotion.
+  optional bool continueOnError = 7;
+}
+
+// Subscription represents a subscription to some kind of artifact repository.
+message Subscription {
+  // SubscriptionType specifies the kind of subscription this is.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string subscriptionType = 1;
+
+  // Name is a unique (with respect to a Warehouse) name used for identifying
+  // this subscription.
+  //
+  // +kubebuilder:validation:MinLength=1
+  optional string name = 2;
+
+  // Config is a JSON object containing opaque configuration for this
+  // subscription. (It must be an object. It may not be a list or a scalar
+  // value.) This is only understood by a corresponding Subscriber
+  // implementation for the ArtifactType.
+  //
+  // +optional
+  optional .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON config = 3;
+
+  // DiscoveryLimit is an optional limit on the number of artifacts that can
+  // be discovered for this subscription.
+  //
+  // +kubebuilder:validation:Minimum=1
+  // +kubebuilder:validation:Maximum=100
+  // +kubebuilder:default=20
+  optional int32 discoveryLimit = 4;
 }
 
 // Verification describes how to verify that a Promotion has been successful
@@ -1361,14 +1992,20 @@ message WarehouseSpec {
   // field is implicitly treated as if its value were "5m0s".
   //
   // +kubebuilder:validation:Type=string
-  // +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(s|m|h))+$"
+  // +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(s|m|h))+$`
   // +kubebuilder:default="5m0s"
+  // +akuity:test-kubebuilder-pattern=Duration
   optional .k8s.io.apimachinery.pkg.apis.meta.v1.Duration interval = 4;
 
   // FreightCreationPolicy describes how Freight is created by this Warehouse.
   // This field is optional. When left unspecified, the field is implicitly
   // treated as if its value were "Automatic".
-  // Accepted values: Automatic, Manual
+  //
+  // Accepted values:
+  //
+  // - "Automatic": New Freight is created automatically when any new artifact
+  //   is discovered.
+  // - "Manual": New Freight is never created automatically.
   //
   // +kubebuilder:default=Automatic
   // +kubebuilder:validation:Optional
@@ -1378,7 +2015,25 @@ message WarehouseSpec {
   // produced by this Warehouse.
   //
   // +kubebuilder:validation:MinItems=1
-  repeated RepoSubscription subscriptions = 1;
+  repeated .k8s.io.apiextensions_apiserver.pkg.apis.apiextensions.v1.JSON subscriptions = 1;
+
+  // FreightCreationCriteria defines criteria that must be satisfied for Freight
+  // to be created automatically from new artifacts following discovery. This
+  // field has no effect when the FreightCreationPolicy is `Manual`.
+  //
+  // +kubebuilder:validation:Optional
+  optional FreightCreationCriteria freightCreationCriteria = 5;
+}
+
+// WarehouseStats contains a summary of the collective state of a Project's
+// Warehouses.
+message WarehouseStats {
+  // Count contains the total number of Warehouses in the Project.
+  optional int64 count = 2;
+
+  // Health contains a summary of the collective health of a Project's
+  // Warehouses.
+  optional HealthStats health = 1;
 }
 
 // WarehouseStatus describes a Warehouse's most recently observed state.
@@ -1407,5 +2062,69 @@ message WarehouseStatus {
 
   // DiscoveredArtifacts holds the artifacts discovered by the Warehouse.
   optional DiscoveredArtifacts discoveredArtifacts = 7;
+}
+
+// WebhookReceiverConfig describes the configuration for a single webhook
+// receiver.
+message WebhookReceiverConfig {
+  // Name is the name of the webhook receiver.
+  //
+  // +kubebuilder:validation:Required
+  // +kubebuilder:validation:MinLength=1
+  // +kubebuilder:validation:MaxLength=253
+  // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+  // +akuity:test-kubebuilder-pattern=KubernetesName
+  optional string name = 1;
+
+  // Bitbucket contains the configuration for a webhook receiver that is
+  // compatible with Bitbucket payloads.
+  optional BitbucketWebhookReceiverConfig bitbucket = 5;
+
+  // DockerHub contains the configuration for a webhook receiver that is
+  // compatible with DockerHub payloads.
+  optional DockerHubWebhookReceiverConfig dockerhub = 6;
+
+  // GitHub contains the configuration for a webhook receiver that is compatible
+  // with GitHub payloads.
+  optional GitHubWebhookReceiverConfig github = 2;
+
+  // GitLab contains the configuration for a webhook receiver that is compatible
+  // with GitLab payloads.
+  optional GitLabWebhookReceiverConfig gitlab = 3;
+
+  // Harbor contains the configuration for a webhook receiver that is compatible
+  // with Harbor payloads.
+  optional HarborWebhookReceiverConfig harbor = 10;
+
+  // Quay contains the configuration for a webhook receiver that is compatible
+  // with Quay payloads.
+  optional QuayWebhookReceiverConfig quay = 4;
+
+  // Artifactory contains the configuration for a webhook receiver that is
+  // compatible with JFrog Artifactory payloads.
+  optional ArtifactoryWebhookReceiverConfig artifactory = 9;
+
+  // Azure contains the configuration for a webhook receiver that is compatible
+  // with Azure Container Registry (ACR) and Azure DevOps payloads.
+  optional AzureWebhookReceiverConfig azure = 8;
+
+  // Gitea contains the configuration for a webhook receiver that is compatible
+  // with Gitea payloads.
+  optional GiteaWebhookReceiverConfig gitea = 7;
+
+  // Generic contains the configuration for a generic webhook receiver.
+  optional GenericWebhookReceiverConfig generic = 11;
+}
+
+// WebhookReceiverDetails encapsulates the details of a webhook receiver.
+message WebhookReceiverDetails {
+  // Name is the name of the webhook receiver.
+  optional string name = 1;
+
+  // Path is the path to the receiver's webhook endpoint.
+  optional string path = 3;
+
+  // URL includes the full address of the receiver's webhook endpoint.
+  optional string url = 4;
 }
 

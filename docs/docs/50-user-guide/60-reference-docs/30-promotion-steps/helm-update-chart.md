@@ -16,7 +16,7 @@ referenced by the Freight being promoted. This step is commonly followed by a
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `path` | `string` | Y | Path to a Helm chart (i.e. to a directory containing a `Chart.yaml` file). This path is relative to the temporary workspace that Kargo provisions for use by the promotion process. |
-| `charts` | `[]string` | Y | The details of dependency (subschart) updates to be applied to the chart's `Chart.yaml` file. |
+| `charts` | `[]object` | N | The details of dependency (subchart) updates to be applied to the chart's `Chart.yaml` file. When left unspecified, charts will be updated according to the SemVer ranges declared in the `Chart.yaml` file. |
 | `charts[].repository` | `string` | Y | The URL of the Helm chart repository in the `dependencies` entry whose `version` field is to be updated. Must _exactly_ match the `repository` field of that entry. |
 | `charts[].name` | `string` | Y | The name of the chart in in the `dependencies` entry whose `version` field is to be updated. Must exactly match the `name` field of that entry. |
 | `charts[].version` | `string` | Y | The version to which the dependency should be updated. |
@@ -25,7 +25,7 @@ referenced by the Freight being promoted. This step is commonly followed by a
 
 | Name | Type | Description |
 |------|------|-------------|
-| `commitMessage` | `string` | A description of the change(s) applied by this step. Typically, a subsequent [`git-commit` step](git-commit.md) will reference this output and aggregate this commit message fragment with other like it to build a comprehensive commit message that describes all changes. |
+| `commitMessage` | `string` | A description of the change(s) applied by this step. Typically, a subsequent [`git-commit` step](git-commit.md) will reference this output and aggregate this commit message fragment with others like it to build a comprehensive commit message that describes all changes. |
 
 ## Examples
 
@@ -78,13 +78,16 @@ steps:
 ```
 
 :::info
+
 For more information on `chartFrom` and expressions, see the
 [Expressions](../40-expressions.md#functions) documentation.
+
 :::
 
 ### OCI Chart Repository
 
 :::caution
+
 Classic (HTTP/HTTPS) Helm chart repositories can contain many differently named
 charts. A specific chart, therefore, can be identified by a repository URL and
 a chart name.
@@ -131,12 +134,15 @@ dependencies:
 __When using `helm-update-chart` to update the dependencies in a `Chart.yaml`
 file, you must play by Helm's rules and use the _registry_ URL in the
 `repository` field and the _repository_ name (chart name) in the `name` field.__
+
 :::
 
 :::info
+
 As a general rule, when configuring Kargo to update something, observe the
 conventions of the thing being updated, even if those conventions differ from
 Kargo's own. Kargo is aware of such differences and will adapt accordingly.
+
 :::
 
 Given a `Chart.yaml` file such as the following:
@@ -180,13 +186,52 @@ steps:
   config:
     path: ./src/charts/my-chart
     charts:
-    - repository: ${{ chartReg }}
+    - repository: ${{ vars.chartReg }}
       name: some-chart
-      version: ${{ chartFrom(chartReg + "/some-chart").Version }}
+      version: ${{ chartFrom(vars.chartReg + "/some-chart").Version }}
 # Render manifests to ./out, commit, push, etc...
 ```
 
 :::info
+
 For more information on `chartFrom` and expressions, see the
 [Expressions](../40-expressions.md#functions) documentation.
+
 :::
+
+### `Chart.yaml` SemVer ranges
+
+Given a `Chart.yaml` file such as the following:
+
+```yaml
+apiVersion: v2
+name: example
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+dependencies:
+- repository: https://example-chart-repo
+  name: some-chart
+  version: ^1.0.0
+```
+
+The `dependencies` can be updated to the latest version according to the
+SemVer range by running the update without any further configuration
+options:
+
+```yaml
+vars:
+- name: gitRepo
+  value: https://github.com/example/repo.git
+steps:
+- uses: git-clone
+  config:
+    repoURL: ${{ vars.gitRepo }}
+    checkout:
+    - commit: ${{ commitFrom(vars.gitRepo).ID }}
+      path: ./src
+- uses: helm-update-chart
+  config:
+    path: ./src/charts/my-chart
+# Render manifests to ./out, commit, push, etc...
+```

@@ -35,7 +35,7 @@ export default defineConfig({
   plugins: [
     tsConfigPaths(),
     viteCompression(),
-    react(),
+    react({ exclude: [/\/node_modules\//] }),
     // https://github.com/vdesjs/vite-plugin-monaco-editor/issues/21
     (monacoEditorPlugin as unknown as { default: typeof monacoEditorPlugin }).default({
       customWorkers: [
@@ -49,6 +49,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/akuity.io.kargo.service.v1alpha1.KargoService': {
+        target: API_URL,
+        changeOrigin: true
+      },
+      '/v1beta1': {
         target: API_URL,
         changeOrigin: true
       }

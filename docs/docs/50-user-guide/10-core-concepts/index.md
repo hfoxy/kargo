@@ -31,13 +31,15 @@ these sort of processes that Kargo is designed to help you implement and manage.
 If you've ever made a change to your "test" environment, were satisfied with the
 change, and then either manually applied the same change to another environment,
 such as "staging," or else grappled with how to automate such a process, then
-you're already familiar with the with the idea of a promotion.
+you're already familiar with the idea of a promotion.
 
 :::note
+
 Promotions are different from _deployments_. Promotions focus on propagating
 changes to the _desired state_ of each stage in your application's lifecycle.
 The job of _deploying_ -- making the actual state of a Kubernetes cluster
 reflect the desired state -- is left to a GitOps agent like Argo CD.
+
 :::
 
 ## Stages
@@ -105,4 +107,4 @@ project using standard Kubernetes RBAC.
 ## What next?
 
 For more technical coverage of the concepts presented here, please refer to the
-corresponding [How-to Guides](../how-to-guides).
+corresponding [How-to Guides](/user-guide/how-to-guides).

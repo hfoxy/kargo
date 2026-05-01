@@ -10,27 +10,44 @@ specified source and target branches. This step is often used after a
 [`git-push` step](git-push.md) and is commonly followed by a
 [`git-wait-for-pr` step](git-wait-for-pr.md).
 
-At present, this feature only supports GitHub pull requests and GitLab merge
-requests.
+At present, this feature only supports GitHub, Gitea, Azure DevOps, and
+GitLab pull/merge requests.
+
+## Credentials
+
+Git steps are utilizing the [repository credentials](../../50-security/30-managing-secrets.md#repository-credentials)
+system to access the git repos.
 
 ## Configuration
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `repoURL` | `string` | Y | The URL of a remote Git repository. |
-| `provider` | `string` | N | The name of the Git provider to use. Currently only `github` and `gitlab` are supported. Kargo will try to infer the provider if it is not explicitly specified.  |
+| `repoURL` | `string` | Y | The URL of a remote Git repository. **Deprecated:** Support for SSH URLs (`ssh://` and SCP-style `git@host:path`) is deprecated as of v1.10.0 and will be removed in v1.13.0. Use HTTPS URLs instead. |
+| `provider` | `string` | N | The name of the Git provider to use. Currently `azure`, `bitbucket`, `gitea`, `github`, and `gitlab` are supported. Kargo will try to infer the provider if it is not explicitly specified. |
 | `insecureSkipTLSVerify` | `boolean` | N | Indicates whether to bypass TLS certificate verification when interfacing with the Git provider. Setting this to `true` is highly discouraged in production. |
 | `sourceBranch` | `string` | Y | Specifies the source branch for the pull request. |
 | `targetBranch` | `string` | N | The branch to which the changes should be merged. |
-| `createTargetBranch` | `boolean` | N | Indicates whether a new, empty orphaned branch should be created and pushed to the remote if the target branch does not already exist there. Default is `false`. |
+| `createTargetBranch` | `boolean` | N | **Deprecated**. Is a no-op if set. Will be removed in a future release.|
 | `title` | `string` | N | The title for the pull request. Kargo generates a title based on the commit messages if it is not explicitly specified. |
-| `labels` | `[]string` | N | Labels to add to the pull request. |
+| `description` | `string` | N | The description for the pull request. |
+| `labels` | `[]string` | N | Labels to add to the pull request. Not all Git providers support labels; see the note below. |
+
+:::note
+
+Label support varies by Git provider. GitHub and GitLab support labels on pull
+requests. Gitea does not currently support labels (tracked in
+[#6021](https://github.com/akuity/kargo/issues/6021)). Bitbucket does not
+support pull request labels at all.
+
+:::
 
 ## Output
 
 | Name | Type | Description |
 |------|------|-------------|
-| `prNumber` | `number` | The numeric identifier of the pull request opened by this step. Typically, a subsequent [`git-wait-for-pr` step](git-wait-for-pr.md) will reference this output to learn what pull request to monitor. |
+| `pr` | `object` | An object containing details about the pull request. |
+| `pr.id` | `number` | The numeric identifier of the pull request opened by this step. Typically, a subsequent [`git-wait-for-pr` step](git-wait-for-pr.md) will reference this output to learn what pull request to monitor. |
+| `pr.url` | `string` | The URL of the pull request. |
 
 ## Examples
 
@@ -46,6 +63,12 @@ This is a common pattern when implementing GitOps-based promotion workflows,
 where changes are first pushed to an intermediate branch and then merged into
 a stage-specific branch through a pull request.
 
+:::note
+
+The `git-open-pr` step will fail if the `targetBranch` doesn't exist.
+
+:::
+
 ```yaml
 steps:
 # Clone, prepare the contents of ./out, commit, etc...
@@ -58,7 +81,6 @@ steps:
   as: open-pr
   config:
     repoURL: https://github.com/example/repo.git
-    createTargetBranch: true
     sourceBranch: ${{ outputs.push.branch }}
     targetBranch: stage/${{ ctx.stage }}
 # Wait for the PR to be merged or closed...
@@ -86,28 +108,46 @@ steps:
     path: ./out
     generateTargetBranch: true
 - uses: git-open-pr
+  as: open-pr
   config:
     repoURL: https://github.com/example/repo.git
     sourceBranch: ${{ outputs.push.branch }}
     targetBranch: stage/${{ ctx.stage }}
     title: Deploy to ${{ ctx.stage }}
     labels: ["infra", "needs-review"]
-# Wait for the PR to be merged or closed...
+- if: ${{ status('open-pr') != 'Skipped' }}
+  uses: git-wait-for-pr
+  as: wait-for-pr
+  config:
+    repoURL: https://github.com/example/repo.git
+    prNumber: ${{ outputs['open-pr'].pr.id }}
 ```
 
-### Custom Git Provider
+### Skipped
 
-The following example demonstrates how to specify a custom Git provider for
-`git-open-pr`. This is useful when the provider cannot be inferred from the
-`repoURL`. For example, if the repository is hosted on a self-hosted GitLab
-instance, the provider must be specified as `gitlab`.
+The following example conditionally runs the 
+[`git-wait-for-pr` step](git-wait-for-pr.md) based on whether or not the 
+`git-open-pr` step was skipped. If there are no changes between the 
+`sourceBranch` and `targetBranch`, the `git-open-pr` step will be skipped. The 
+[`status`](../40-expressions.md#statusstepalias) expression function can be used 
+by subsequent steps to determine if a preceding step was skipped.
 
 ```yaml
-steps:
-# Clone, push, prepare the contents of ./out, commit, etc...
-- uses: git-open-pr
+- uses: git-push
+  as: push
   config:
-    repoURL: https://gitlab.example.com/example/repo.git
-    provider: gitlab
-    # Additional configuration...
+    path: ./out
+    generateTargetBranch: true
+  - uses: git-open-pr
+    as: open-pr
+    config:
+      repoURL: https://github.com/example/repo.git
+      sourceBranch: ${{ outputs.push.branch }}
+      targetBranch: stage/${{ ctx.stage }}
+  - if: ${{ status('open-pr') != 'Skipped' }}
+    uses: git-wait-for-pr
+    as: wait-for-pr
+    config:
+      repoURL: https://github.com/example/repo.git
+      prNumber: ${{ outputs['open-pr'].pr.id }}
 ```

@@ -1,13 +1,15 @@
-import { faWandSparkles } from '@fortawesome/free-solid-svg-icons';
+import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { Button, Flex } from 'antd';
 
 import { PageTitle } from '@ui/features/common';
+import { useDocumentTitle } from '@ui/features/common/document-title/use-document-title';
 import { useModal } from '@ui/features/common/modal/use-modal';
 import { CreateProjectModal } from '@ui/features/project/list/create-project-modal';
 import { ProjectsList } from '@ui/features/project/list/projects-list';
 
 export const Projects = () => {
+  useDocumentTitle(['Projects']);
   const { show } = useModal((p) => <CreateProjectModal {...p} />);
 
   return (
@@ -17,9 +19,9 @@ export const Projects = () => {
         <Button
           type='primary'
           onClick={() => show()}
-          icon={<FontAwesomeIcon icon={faWandSparkles} size='1x' />}
+          icon={<FontAwesomeIcon icon={faPlus} size='1x' />}
         >
-          Create
+          New Project
         </Button>
       </Flex>
       <ProjectsList />

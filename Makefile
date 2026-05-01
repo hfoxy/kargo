@@ -3,14 +3,16 @@ include $(CURDIR)/hack/tools.mk
 SHELL	      ?= /bin/bash
 EXTENDED_PATH ?= $(CURDIR)/hack/bin:$(PATH)
 
-ARGO_CD_CHART_VERSION		:= 7.7.0
-ARGO_ROLLOUTS_CHART_VERSION := 2.37.7
-CERT_MANAGER_CHART_VERSION 	:= 1.16.1
+ARGO_CD_CHART_VERSION		:= 9.4.3
+ARGO_ROLLOUTS_CHART_VERSION := 2.40.6
+CERT_MANAGER_CHART_VERSION 	:= 1.19.3
 
 BUF_LINT_ERROR_FORMAT	?= text
-GO_LINT_ERROR_FORMAT 	?= colored-line-number
+GO_LINT_EXTRA_FLAGS 	?= --output.text.print-issued-lines --output.text.colors
 
-VERSION_PACKAGE := github.com/akuity/kargo/internal/version
+GO_TEST_ARGS ?=
+
+VERSION_PACKAGE := github.com/akuity/kargo/pkg/x/version
 
 # Default to docker, but support alternative container runtimes that are CLI-compatible with Docker
 CONTAINER_RUNTIME ?= docker
@@ -18,6 +20,7 @@ CONTAINER_RUNTIME ?= docker
 IMAGE_REPO 			?= kargo
 LOCAL_REG_PORT			?= 5001
 BASE_IMAGE 			?= localhost:$(LOCAL_REG_PORT)/$(IMAGE_REPO)-base
+APKO_IMAGE 			?= cgr.dev/chainguard/apko
 IMAGE_TAG 			?= dev
 IMAGE_PUSH 			?= false
 IMAGE_PLATFORMS 	?=
@@ -54,6 +57,8 @@ ifeq ($(GOARCH), x86_64)
 	override GOARCH = amd64
 endif
 
+KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME ?=
+
 ################################################################################
 # Tests                                                                        #
 #                                                                              #
@@ -73,17 +78,34 @@ format: format-go format-ui
 
 .PHONY: lint-go
 lint-go: install-golangci-lint
-	$(GOLANGCI_LINT) run --out-format=$(GO_LINT_ERROR_FORMAT)
+	{ \
+		set -e; \
+		for mod in $$(find . -maxdepth 4 -type f -name 'go.mod' | grep -v tools); do \
+			echo "Linting $$(dirname $${mod}) ..."; \
+			cd $$(dirname $${mod}); \
+			$(GOLANGCI_LINT) run --config $(CURDIR)/.golangci.yaml $(GO_LINT_EXTRA_FLAGS); \
+			cd - > /dev/null; \
+		done; \
+	}
 
 .PHONY: format-go
 format-go:
-	golangci-lint run --fix
+	{ \
+		set -e; \
+		for mod in $$(find . -maxdepth 4 -type f -name 'go.mod' | grep -v tools); do \
+			echo "Fixing $$(dirname $${mod}) ..."; \
+			cd $$(dirname $${mod}); \
+			$(GOLANGCI_LINT) run --fix --config $(CURDIR)/.golangci.yaml; \
+			cd - > /dev/null; \
+		done; \
+	}
 
 .PHONY: lint-proto
 lint-proto: install-buf
 	# Vendor go dependencies to build protobuf definitions
 	go mod vendor
-	$(BUF) lint api --error-format=$(BUF_LINT_ERROR_FORMAT)
+	@# Only lint hand-written .proto files
+	$(BUF) lint . --path api/service --error-format=$(BUF_LINT_ERROR_FORMAT)
 
 .PHONY: lint-charts
 lint-charts: install-helm
@@ -108,13 +130,22 @@ format-ui:
 
 .PHONY: test-unit
 test-unit: install-helm
-	PATH=$(EXTENDED_PATH) go test \
-		-v \
-		-timeout=300s \
-		-race \
-		-coverprofile=coverage.txt \
-		-covermode=atomic \
-		./...
+	{ \
+		set -e; \
+		for mod in $$(find . -maxdepth 4 -type f -name 'go.mod' | grep -v tools); do \
+			echo "Testing $$(dirname $${mod}) ..."; \
+			cd $$(dirname $${mod}); \
+			PATH=$(EXTENDED_PATH) go test \
+				-v \
+				-timeout=300s \
+				-race \
+				-coverprofile=coverage.txt \
+				-covermode=atomic \
+				-count=1 \
+				./... $(GO_TEST_ARGS); \
+			cd - > /dev/null; \
+		done; \
+	}
 
 ################################################################################
 # Builds                                                                       #
@@ -138,14 +169,15 @@ clean:
 .PHONY: build-base-image
 build-base-image:
 	mkdir -p build
+	chmod 0777 build
 	cp kargo-base.apko.yaml build
-	docker run \
+	$(CONTAINER_RUNTIME) run \
 		--rm \
 		-v $(dir $(realpath $(firstword $(MAKEFILE_LIST))))build:/build \
 		-w /build \
-		cgr.dev/chainguard/apko \
+		$(APKO_IMAGE) \
 		build kargo-base.apko.yaml $(BASE_IMAGE) kargo-base.tar.gz
-	docker image load -i build/kargo-base.tar.gz
+	$(CONTAINER_RUNTIME) image load -i build/kargo-base.tar.gz
 
 .PHONY: build-cli
 build-cli:
@@ -153,6 +185,10 @@ build-cli:
 		-ldflags "-w -X $(VERSION_PACKAGE).version=$(VERSION) -X $(VERSION_PACKAGE).buildDate=$$(date -u +'%Y-%m-%dT%H:%M:%SZ') -X $(VERSION_PACKAGE).gitCommit=$(GIT_COMMIT) -X $(VERSION_PACKAGE).gitTreeState=$(GIT_TREE_STATE)" \
 		-o bin/kargo-$(GOOS)-$(GOARCH)$(shell [ ${GOOS} = windows ] && echo .exe) \
 		./cmd/cli
+
+.PHONY: sign-and-notarize-cli
+sign-and-notarize-cli: install-quill
+	$(QUILL) sign-and-notarize --p12 $(QUILL_SIGN_P12) $(KARGO_BIN_PATH)
 
 ################################################################################
 # Used for Nighty/Unstable builds                                              #
@@ -171,8 +207,8 @@ build-nightly-cli:
 
 .PHONY: build-ui
 build-ui:
-	cd ui && NODE_ENV=production BUILD_TARGET_PATH=../internal/api/ui pnpm run build --emptyOutDir
-	touch internal/api/ui/.keep
+	cd ui && NODE_ENV=production BUILD_TARGET_PATH=../pkg/server/ui pnpm run build --emptyOutDir
+	touch pkg/server/ui/.keep
 
 .PHONY: build-cli-with-ui
 build-cli-with-ui: build-ui build-cli
@@ -182,10 +218,35 @@ build-cli-with-ui: build-ui build-cli
 ################################################################################
 
 .PHONY: codegen
-codegen: codegen-proto codegen-controller codegen-directive-configs codegen-ui codegen-docs
+codegen: codegen-openapi codegen-proto codegen-controller codegen-schema-to-go codegen-ui codegen-docs
+
+.PHONY: codegen-openapi
+codegen-openapi: install-swag install-go-swagger install-jq
+	rm -f swagger.json
+	find pkg/client/generated -mindepth 1 ! -name go.mod ! -name go.sum -exec rm -rf {} +
+	rm -rf /tmp/swagger-build
+	mkdir -p /tmp/swagger-build
+	$(SWAG_LINK) init \
+		--generalInfo pkg/server/rest_router.go \
+		--output /tmp/swagger-build \
+		--parseDependency \
+		--parseInternal \
+		--outputTypes json
+	mv /tmp/swagger-build/swagger.json .
+	rm -rf /tmp/swagger-build
+	hack/codegen/fix-swagger-spec.sh swagger.json
+	mkdir -p pkg/client/generated
+	$(GO_SWAGGER_LINK) generate client \
+		-f swagger.json \
+		-t pkg \
+		--client-package client/generated \
+		--model-package client/generated/models \
+		--skip-validation
+	pnpm --dir=ui install --dev
+	pnpm --dir=ui run generate:api
 
 .PHONY: codegen-proto
-codegen-proto: install-protoc install-go-to-protobuf install-protoc-gen-gogo install-goimports install-buf
+codegen-proto: install-protoc install-go-to-protobuf install-protoc-gen-gogo install-goimports install-buf install-protoc-gen-doc
 	./hack/codegen/proto.sh
 
 .PHONY: codegen-controller
@@ -200,10 +261,11 @@ codegen-controller: install-controller-gen
 		object:headerFile=hack/boilerplate.go.txt \
 		paths=./...
 
-.PHONY: codegen-directive-configs
-codegen-directive-configs:
-	npm install -g quicktype
-	./hack/codegen/directive-configs.sh
+.PHONY: codegen-schema-to-go
+codegen-schema-to-go: install-goimports
+	npm install -g quicktype@23.0.176
+	./hack/codegen/promotion-step-configs.sh
+	./hack/codegen/subscriptions.sh
 
 .PHONY: codegen-ui
 codegen-ui:
@@ -213,6 +275,7 @@ codegen-ui:
 .PHONY: codegen-docs
 codegen-docs:
 	npm install -g @bitnami/readme-generator-for-helm
+	pnpm install --dir docs
 	bash hack/helm-docs/helm-docs.sh
 
 ################################################################################
@@ -222,12 +285,13 @@ codegen-docs:
 # that is pre-loaded with required tools.                                      #
 ################################################################################
 
-# Prevents issues with vcs stamping within docker containers. 
+# Prevents issues with vcs stamping within docker containers.
 GOFLAGS="-buildvcs=false"
 
 DOCKER_OPTS := -it \
 	--rm \
 	-e GOFLAGS=$(GOFLAGS) \
+	-e GO_TEST_ARGS=$(GO_TEST_ARGS) \
 	-v gomodcache:/home/user/gocache \
 	-v $(dir $(realpath $(firstword $(MAKEFILE_LIST)))):/workspaces/kargo \
 	-v /workspaces/kargo/ui/node_modules \
@@ -252,7 +316,7 @@ endif
 .PHONY: hack-build-dev-tools
 hack-build-dev-tools:
 	$(CONTAINER_RUNTIME) build $(DEV_TOOLS_BUILD_OPTS) \
- 		-f Dockerfile.dev -t kargo:dev-tools .
+		-f Dockerfile.dev -t kargo:dev-tools .
 
 .PHONY: hack-lint
 hack-lint: hack-build-dev-tools
@@ -299,10 +363,10 @@ hack-codegen: hack-build-dev-tools
 .PHONY: hack-build
 hack-build: build-base-image
 	{ \
-		$(CONTAINER_RUNTIME) run -d -p $(LOCAL_REG_PORT):5000 --name tmp-registry registry:2; \
+		$(CONTAINER_RUNTIME) run -d -p $(LOCAL_REG_PORT):5000 --name tmp-registry registry:3.0.0; \
 		trap '$(CONTAINER_RUNTIME) rm -f tmp-registry' EXIT; \
-		docker push $(BASE_IMAGE):latest-amd64; \
-		docker push $(BASE_IMAGE):latest-arm64; \
+		$(CONTAINER_RUNTIME) push $(BASE_IMAGE):latest-amd64; \
+		$(CONTAINER_RUNTIME) push $(BASE_IMAGE):latest-arm64; \
 		$(CONTAINER_RUNTIME) buildx build \
 			$(DOCKER_BUILD_OPTS) \
 			--network host \
@@ -319,22 +383,28 @@ hack-build-cli: hack-build-dev-tools
 	$(DOCKER_CMD) sh -c 'GOOS=$(GOOS) GOARCH=$(GOARCH) make build-cli'
 
 .PHONY: hack-kind-up
-hack-kind-up:
-	ctlptl apply -f hack/kind/cluster.yaml
-	make hack-install-prereqs
+hack-kind-up: install-ctlptl install-kind
+	PATH=$(EXTENDED_PATH) $(CTLPTL) apply -f hack/kind/cluster.yaml
 
 .PHONY: hack-k3d-up
-hack-k3d-up:
-	ctlptl apply -f hack/k3d/cluster.yaml
-	make hack-install-prereqs
+hack-k3d-up: install-ctlptl install-k3d
+	PATH=$(EXTENDED_PATH) $(CTLPTL) apply -f hack/k3d/cluster.yaml
+
+.PHONY: hack-tilt-up
+hack-tilt-up: install-tilt install-helm
+	PATH=$(EXTENDED_PATH) $(TILT) up
+
+.PHONY: hack-tilt-down
+hack-tilt-down: install-tilt
+	PATH=$(EXTENDED_PATH) $(TILT) down
 
 .PHONY: hack-kind-down
-hack-kind-down:
-	ctlptl delete -f hack/kind/cluster.yaml
+hack-kind-down: install-ctlptl install-kind
+	PATH=$(EXTENDED_PATH) $(CTLPTL) delete -f hack/kind/cluster.yaml
 
 .PHONY: hack-k3d-down
-hack-k3d-down:
-	ctlptl delete -f hack/k3d/cluster.yaml
+hack-k3d-down: install-ctlptl install-k3d
+	PATH=$(EXTENDED_PATH) $(CTLPTL) delete -f hack/k3d/cluster.yaml
 
 .PHONY: hack-install-prereqs
 hack-install-prereqs: hack-install-cert-manager hack-install-argocd hack-install-argo-rollouts
@@ -363,8 +433,9 @@ hack-install-argocd: install-helm
 		--set server.service.type=NodePort \
 		--set server.service.nodePortHttp=30080 \
 		--set server.extensions.enabled=true \
-		--set server.extensions.contents[0].name=argo-rollouts \
-		--set server.extensions.contents[0].url=https://github.com/argoproj-labs/rollout-extension/releases/download/v0.3.3/extension.tar \
+		--set server.extensions.extensionList[0].name=argo-rollouts \
+		--set server.extensions.extensionList[0].env[0].name=EXTENSION_URL \
+		--set server.extensions.extensionList[0].env[0].value=https://github.com/argoproj-labs/rollout-extension/releases/download/v0.3.7/extension.tar \
 		--wait
 
 .PHONY: hack-install-argo-rollouts
@@ -392,15 +463,9 @@ hack-uninstall-argocd: install-helm
 hack-uninstall-cert-manager: install-helm
 	$(HELM) delete cert-manager --namespace cert-manager
 
-.PHONY: start-api-local
-start-api-local:
-	./hack/start-api.sh
-
-.PHONY: start-controller-local
-start-controller-local:
-	KUBECONFIG=~/.kube/config \
-	ARGOCD_KUBECONFIG=~/.kube/config \
-    	go run ./cmd/controlplane controller
+.PHONY: hack-ngrok
+hack-ngrok:
+	ngrok http --hostname=$(KARGO_EXTERNAL_WEBHOOKS_SERVER_HOSTNAME) 30083
 
 ################################################################################
 # Docs                                                                         #

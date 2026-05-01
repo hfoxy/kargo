@@ -4,6 +4,7 @@ import { JSONSchema7 } from 'json-schema';
 import argocdUpdateConfig from '@ui/gen/directives/argocd-update-config.json';
 import copyConfig from '@ui/gen/directives/copy-config.json';
 import deleteConfig from '@ui/gen/directives/delete-config.json';
+import failConfig from '@ui/gen/directives/fail-config.json';
 import gitOverwriteConfig from '@ui/gen/directives/git-clear-config.json';
 import gitCloneConfig from '@ui/gen/directives/git-clone-config.json';
 import gitCommitConfig from '@ui/gen/directives/git-commit-config.json';
@@ -13,10 +14,15 @@ import gitWaitForPR from '@ui/gen/directives/git-wait-for-pr-config.json';
 import helmTemplateConfig from '@ui/gen/directives/helm-template-config.json';
 import helmUpdateChartConfig from '@ui/gen/directives/helm-update-chart-config.json';
 import httpConfig from '@ui/gen/directives/http-config.json';
+import jsonParseConfig from '@ui/gen/directives/json-parse-config.json';
 import jsonUpdateConfig from '@ui/gen/directives/json-update-config.json';
 import kustomizeBuildConfig from '@ui/gen/directives/kustomize-build-config.json';
-import kustomizeSetImageConfig from '@ui/gen/directives/kustomize-set-image-config.json';
 import kustomizePatchConfig from '@ui/gen/directives/kustomize-patch-config.json';
+import kustomizeSetImageConfig from '@ui/gen/directives/kustomize-set-image-config.json';
+import tomlParseConfig from '@ui/gen/directives/toml-parse-config.json';
+import tomlUpdateConfig from '@ui/gen/directives/toml-update-config.json';
+import yamlMergeConfig from '@ui/gen/directives/yaml-merge-config.json';
+import yamlParseConfig from '@ui/gen/directives/yaml-parse-config.json';
 import yamlUpdateConfig from '@ui/gen/directives/yaml-update-config.json';
 
 import { PromotionDirectivesRegistry } from './types';
@@ -61,12 +67,32 @@ export const useDiscoverPromotionDirectivesRegistries = (): PromotionDirectivesR
         config: gitWaitForPR as unknown as JSONSchema7
       },
       {
+        identifier: 'yaml-merge',
+        config: yamlMergeConfig as unknown as JSONSchema7
+      },
+      {
+        identifier: 'yaml-parse',
+        config: yamlParseConfig as JSONSchema7
+      },
+      {
         identifier: 'yaml-update',
         config: yamlUpdateConfig as unknown as JSONSchema7
       },
       {
+        identifier: 'json-parse',
+        config: jsonParseConfig as JSONSchema7
+      },
+      {
         identifier: 'json-update',
         config: jsonUpdateConfig as unknown as JSONSchema7
+      },
+      {
+        identifier: 'toml-parse',
+        config: tomlParseConfig as JSONSchema7
+      },
+      {
+        identifier: 'toml-update',
+        config: tomlUpdateConfig as unknown as JSONSchema7
       },
       {
         identifier: 'git-push',
@@ -89,17 +115,20 @@ export const useDiscoverPromotionDirectivesRegistries = (): PromotionDirectivesR
         config: kustomizeBuildConfig as JSONSchema7
       },
       {
+        identifier: 'kustomize-patch',
+        config: kustomizePatchConfig as JSONSchema7
+      },
+      {
         identifier: 'kustomize-set-image',
         config: kustomizeSetImageConfig as JSONSchema7
       },
       {
-        identifier: 'kustomize-patch',
-        unstable_icons: [faFileImage, faFileEdit],
-        config: kustomizePatchConfig as JSONSchema7
-      },
-      {
         identifier: 'http',
         config: httpConfig as JSONSchema7
+      },
+      {
+        identifier: 'fail',
+        config: failConfig as JSONSchema7
       }
     ]
   };

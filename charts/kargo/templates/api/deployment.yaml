@@ -45,10 +45,22 @@ spec:
         {{- end }}
       {{- end }}
     spec:
+      {{- if not .Values.rbac.useDefaultServiceAccount }}
       serviceAccount: kargo-api
+      {{- end }}
+      {{- if .Values.rbac.disableAutomountServiceAccountToken }}
+      automountServiceAccountToken: false
+      {{- end }}
       {{- with .Values.api.affinity | default .Values.global.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.priorityClassName | default .Values.global.priorityClassName }}
+      priorityClassName: {{ . }}
       {{- end }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
@@ -64,14 +76,23 @@ spec:
             valueFrom:
               resourceFieldRef:
                 containerName: api
+                divisor: "1"
                 resource: limits.memory
           - name: GOMAXPROCS
             valueFrom:
               resourceFieldRef:
                 containerName: api
-                resource: limits.cpu
+                divisor: "1"
+                resource: {{ include "kargo.selectCpuResourceField" (dict "resources" .Values.api.resources) }}
           {{- with (concat .Values.global.env .Values.api.env) }}
           {{- toYaml . | nindent 10 }}
+          {{- end }}
+          {{- if and .Values.api.rollouts.integrationEnabled .Values.api.rollouts.logs.enabled .Values.api.rollouts.logs.tokenSecret.name .Values.api.rollouts.logs.tokenSecret.key }}
+          - name: ANALYSIS_RUN_LOG_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.api.rollouts.logs.tokenSecret.name }}
+                key: {{ .Values.api.rollouts.logs.tokenSecret.key }}
           {{- end }}
           envFrom:
           - configMapRef:
@@ -86,6 +107,20 @@ spec:
               containerPort: 8080
               protocol: TCP
 {{- if .Values.api.probes.enabled }}
+          startupProbe:
+            {{- if .Values.api.tls.enabled }}
+            exec:
+              command:
+                - /usr/local/bin/grpc_health_probe
+                - -addr=:8080
+                - -tls
+                - -tls-no-verify
+            {{- else }}
+            grpc:
+              port: 8080
+            {{- end }}
+            failureThreshold: 30
+            initialDelaySeconds: 10
           livenessProbe:
             {{- if .Values.api.tls.enabled }}
             exec:
@@ -98,7 +133,6 @@ spec:
             grpc:
               port: 8080
             {{- end }}
-            initialDelaySeconds: 10
           readinessProbe:
             {{- if .Values.api.tls.enabled }}
             exec:
@@ -172,7 +206,7 @@ spec:
 {{- end }}
 {{- if .Values.api.tls.enabled }}
               - secret:
-                  name: kargo-api-cert
+                  name: {{ .Values.api.tls.secretName }}
                   items:
                     - key: tls.crt
                       path: tls.crt
@@ -181,7 +215,7 @@ spec:
 {{- end }}
 {{- if and .Values.api.oidc.enabled .Values.api.oidc.dex.enabled }}
               - secret:
-                  name: kargo-dex-server-cert
+                  name: {{ .Values.api.oidc.dex.tls.secretName }}
                   items:
                     - key: ca.crt
                       path: idp-ca.crt

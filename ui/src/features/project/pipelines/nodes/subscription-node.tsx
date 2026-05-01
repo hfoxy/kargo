@@ -1,20 +1,36 @@
 import { IconProp } from '@fortawesome/fontawesome-svg-core';
 import { faDocker, faGitAlt } from '@fortawesome/free-brands-svg-icons';
-import { faAnchor, faQuestion } from '@fortawesome/free-solid-svg-icons';
+import { faAnchor, faExternalLink, faQuestion } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Tooltip } from 'antd';
-import classNames from 'classnames';
+import { Card, Flex, Tag } from 'antd';
+import Link from 'antd/es/typography/Link';
+import { useMemo } from 'react';
 
-import { RepoSubscription } from '@ui/gen/v1alpha1/generated_pb';
+import { RepoSubscription } from '@ui/gen/api/v1alpha1/generated_pb';
 
-import styles from './custom-node.module.less';
+import {
+  artifactBase,
+  artifactURL,
+  humanComprehendableArtifact
+} from '../freight/artifact-parts-utils';
 
-type SubscriptionNodeProps = {
-  subscription: RepoSubscription;
-};
+import styles from './node-size-source-of-truth.module.less';
 
-export const SubscriptionNode = (props: SubscriptionNodeProps) => {
-  let icon: IconProp = faQuestion;
+export const SubscriptionNode = (props: { subscription: RepoSubscription }) => {
+  const { title, base, link, repoURL } = useMemo(() => {
+    const repoURL =
+      props.subscription?.git?.repoURL ||
+      props.subscription?.chart?.repoURL ||
+      props.subscription?.image?.repoURL ||
+      '';
+    const title = humanComprehendableArtifact(repoURL) || props.subscription.subscription?.name;
+    const base = artifactBase(repoURL) || repoURL;
+    const link = artifactURL(repoURL);
+
+    return { title, repoURL, base, link };
+  }, [props.subscription]);
+
+  let icon: IconProp | null = faQuestion;
 
   if (props.subscription?.chart) {
     icon = faAnchor;
@@ -22,26 +38,37 @@ export const SubscriptionNode = (props: SubscriptionNodeProps) => {
     icon = faGitAlt;
   } else if (props.subscription?.image) {
     icon = faDocker;
+  } else if (props.subscription?.subscription) {
+    icon = null;
   }
 
-  const url =
-    props.subscription?.git?.repoURL ||
-    props.subscription?.image?.repoURL ||
-    props.subscription?.chart?.repoURL;
-
   return (
-    <div className={classNames(styles.repoSubscriptionNode)}>
-      <div className={classNames(styles.header, 'header')}>
-        <h3>Subscription</h3>
+    <Card
+      size='small'
+      className={styles['subscription-node-size']}
+      title={
+        <Flex align='center' gap={16}>
+          {icon && <FontAwesomeIcon icon={icon} />}
+          <span className='text-xs'>{title}</span>
+        </Flex>
+      }
+      variant='borderless'
+    >
+      {!!repoURL && (
+        <Link href={link} target='_blank'>
+          <Tag className='text-[9px] text-wrap' color='blue' bordered={false}>
+            {base}
 
-        <FontAwesomeIcon className='ml-auto text-base' icon={icon} />
-      </div>
+            <FontAwesomeIcon icon={faExternalLink} className='ml-1' />
+          </Tag>
+        </Link>
+      )}
 
-      <div className={classNames(styles.body)}>
-        <Tooltip title={url}>
-          <span className='block w-36 overflow-hidden text-ellipsis whitespace-nowrap'>{url}</span>
-        </Tooltip>
-      </div>
-    </div>
+      {!!props.subscription?.subscription?.subscriptionType && (
+        <Tag color='blue' className='text-[9px] text-wrap' bordered={false}>
+          kind: {props.subscription.subscription?.subscriptionType}
+        </Tag>
+      )}
+    </Card>
   );
 };
