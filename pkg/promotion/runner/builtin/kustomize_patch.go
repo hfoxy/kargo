@@ -132,8 +132,9 @@ func (k *kustomizePatch) addPatches(
 	}
 
 	count := 0
+	matchIndex := -1
 	newPatches := make([]kustypes.Patch, 0, len(currentPatches)+1)
-	for _, p := range currentPatches {
+	for i, p := range currentPatches {
 		if p.Target == nil ||
 			p.Target.Gvk.Kind != cfg.Kind ||
 			p.Target.LabelSelector != cfg.LabelSelector {
@@ -141,7 +142,9 @@ func (k *kustomizePatch) addPatches(
 			continue
 		}
 		count++
+		matchIndex = i
 		patch = p
+		newPatches = append(newPatches, p)
 	}
 	if count > 1 {
 		return nil, "", fmt.Errorf("multiple patches (%d) matching criteria were found", count)
@@ -153,7 +156,11 @@ func (k *kustomizePatch) addPatches(
 	}
 	patch.Patch = patches
 
-	newPatches = append(newPatches, patch)
+	if matchIndex == -1 {
+		newPatches = append(newPatches, patch)
+	} else {
+		newPatches[matchIndex] = patch
+	}
 	return newPatches, k.generateCommitMessage(cfg.Path, targetImage), nil
 }
 
@@ -222,20 +229,6 @@ func updatePatchOps(
 		if err := decoder.Decode(&patches); err != nil {
 			return "", fmt.Errorf("unable to decode patches: %w", err)
 		}
-
-		filtered := make([]patchStringValue, 0, len(patches))
-		for _, patch := range patches {
-			if patch.Op == "replace" {
-				if fullTag && patch.Path == cfg.PathToImage {
-					continue
-				}
-				if !fullTag && (patch.Path == cfg.PathToRepository || patch.Path == cfg.PathToTag) {
-					continue
-				}
-			}
-			filtered = append(filtered, patch)
-		}
-		patches = filtered
 	}
 
 	name := targetImage.NewName
@@ -250,26 +243,69 @@ func updatePatchOps(
 		separator = "@"
 	}
 
+	imagePatch := patchStringValue{
+		Op:    "replace",
+		Path:  cfg.PathToImage,
+		Value: fmt.Sprintf("%s%s%s", name, separator, version),
+	}
+	repositoryPatch := patchStringValue{
+		Op:    "replace",
+		Path:  cfg.PathToRepository,
+		Value: name,
+	}
+	tagPatch := patchStringValue{
+		Op:    "replace",
+		Path:  cfg.PathToTag,
+		Value: version,
+	}
+
+	var foundImage, foundRepository, foundTag bool
+	updatedPatches := make([]patchStringValue, 0, len(patches)+2)
+	for _, patch := range patches {
+		if patch.Op != "replace" {
+			updatedPatches = append(updatedPatches, patch)
+			continue
+		}
+
+		switch {
+		case fullTag && patch.Path == cfg.PathToImage:
+			if foundImage {
+				continue
+			}
+			updatedPatches = append(updatedPatches, imagePatch)
+			foundImage = true
+		case !fullTag && patch.Path == cfg.PathToRepository:
+			if foundRepository {
+				continue
+			}
+			updatedPatches = append(updatedPatches, repositoryPatch)
+			foundRepository = true
+		case !fullTag && patch.Path == cfg.PathToTag:
+			if foundTag {
+				continue
+			}
+			updatedPatches = append(updatedPatches, tagPatch)
+			foundTag = true
+		default:
+			updatedPatches = append(updatedPatches, patch)
+		}
+	}
+
 	if fullTag {
-		patches = append(patches, patchStringValue{
-			Op:    "replace",
-			Path:  cfg.PathToImage,
-			Value: fmt.Sprintf("%s%s%s", name, separator, version),
-		})
+		if !foundImage {
+			updatedPatches = append(updatedPatches, imagePatch)
+		}
 	} else {
-		patches = append(patches, patchStringValue{
-			Op:    "replace",
-			Path:  cfg.PathToRepository,
-			Value: name,
-		}, patchStringValue{
-			Op:    "replace",
-			Path:  cfg.PathToTag,
-			Value: version,
-		})
+		if !foundRepository {
+			updatedPatches = append(updatedPatches, repositoryPatch)
+		}
+		if !foundTag {
+			updatedPatches = append(updatedPatches, tagPatch)
+		}
 	}
 
 	b := new(bytes.Buffer)
-	if err := yaml.NewEncoder(b).Encode(patches); err != nil {
+	if err := yaml.NewEncoder(b).Encode(updatedPatches); err != nil {
 		return "", fmt.Errorf("unable to encode patches: %w", err)
 	}
 	return b.String(), nil

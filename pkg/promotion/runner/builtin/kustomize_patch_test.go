@@ -175,31 +175,88 @@ patches:
 	var patchOps []patchStringValue
 	require.NoError(t, yaml.Unmarshal([]byte(kustomizationDoc.Patches[1].Patch), &patchOps))
 	assert.Equal(t, []patchStringValue{
-		{Op: "replace", Path: "/spec/replicas", Value: "2"},
 		{Op: "replace", Path: "/spec/template/spec/containers/0/image", Value: "ghcr.io/example/demo:v2"},
+		{Op: "replace", Path: "/spec/replicas", Value: "2"},
 	}, patchOps)
 }
 
 func Test_kustomizePatch_addPatches(t *testing.T) {
-	runner := &kustomizePatch{}
-	_, _, err := runner.addPatches(
-		t.Context(),
-		&promotion.StepContext{},
-		builtin.KustomizePatchConfig{
-			Kind:          "Deployment",
-			LabelSelector: "app=demo",
-			PathToImage:   "/image",
-			Image: builtin.KustomizePatchImage{
-				Image: "repo/demo",
-				Tag:   "v2",
+	tests := []struct {
+		name       string
+		cfg        builtin.KustomizePatchConfig
+		patches    []types.Patch
+		assertions func(*testing.T, []types.Patch, string, error)
+	}{
+		{
+			name: "errors on multiple matching patches",
+			cfg: builtin.KustomizePatchConfig{
+				Kind:          "Deployment",
+				LabelSelector: "app=demo",
+				PathToImage:   "/image",
+				Image: builtin.KustomizePatchImage{
+					Image: "repo/demo",
+					Tag:   "v2",
+				},
+			},
+			patches: []types.Patch{
+				{Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=demo"}},
+				{Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=demo"}},
+			},
+			assertions: func(t *testing.T, _ []types.Patch, _ string, err error) {
+				require.ErrorContains(t, err, "multiple patches (2) matching criteria were found")
 			},
 		},
-		[]types.Patch{
-			{Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=demo"}},
-			{Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=demo"}},
+		{
+			name: "updates matching patch in place",
+			cfg: builtin.KustomizePatchConfig{
+				Kind:          "Deployment",
+				LabelSelector: "app=demo",
+				PathToImage:   "/image",
+				Image: builtin.KustomizePatchImage{
+					Image: "repo/demo",
+					Tag:   "v2",
+				},
+			},
+			patches: []types.Patch{
+				{
+					Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=first"},
+					Patch:  "first",
+				},
+				{
+					Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=demo"},
+					Patch: `- op: replace
+  path: /image
+  value: repo/demo:v1
+`,
+				},
+				{
+					Target: &types.Selector{ResId: resid.NewResIdKindOnly("Deployment", ""), LabelSelector: "app=last"},
+					Patch:  "last",
+				},
+			},
+			assertions: func(t *testing.T, patches []types.Patch, _ string, err error) {
+				require.NoError(t, err)
+				require.Len(t, patches, 3)
+				assert.Equal(t, "app=first", patches[0].Target.LabelSelector)
+				assert.Equal(t, "app=demo", patches[1].Target.LabelSelector)
+				assert.Equal(t, "app=last", patches[2].Target.LabelSelector)
+				assert.Contains(t, patches[1].Patch, "value: repo/demo:v2")
+			},
 		},
-	)
-	require.ErrorContains(t, err, "multiple patches (2) matching criteria were found")
+	}
+
+	runner := &kustomizePatch{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patches, commitMsg, err := runner.addPatches(
+				t.Context(),
+				&promotion.StepContext{},
+				tt.cfg,
+				tt.patches,
+			)
+			tt.assertions(t, patches, commitMsg, err)
+		})
+	}
 }
 
 func Test_updatePatchOps(t *testing.T) {
@@ -229,6 +286,7 @@ func Test_updatePatchOps(t *testing.T) {
 				assert.Contains(t, patch, "value: repo/demo:v2")
 				assert.Contains(t, patch, "path: /replicas")
 				assert.Equal(t, 1, strings.Count(patch, "path: /image"))
+				assert.Less(t, strings.Index(patch, "path: /image"), strings.Index(patch, "path: /replicas"))
 			},
 		},
 		{
@@ -255,6 +313,28 @@ func Test_updatePatchOps(t *testing.T) {
 				assert.Contains(t, patch, "value: v2")
 				assert.Contains(t, patch, "value: keep-me")
 				assert.Equal(t, 2, strings.Count(patch, "path: /tag"))
+				assert.Less(t, strings.Index(patch, "value: repo/demo"), strings.Index(patch, "value: v2"))
+				assert.Less(t, strings.Index(patch, "value: v2"), strings.Index(patch, "value: keep-me"))
+			},
+		},
+		{
+			name: "collapses duplicate matching replace ops",
+			patch: `- op: replace
+  path: /image
+  value: old:v1
+- op: replace
+  path: /image
+  value: older:v0
+`,
+			cfg: builtin.KustomizePatchConfig{
+				PathToImage: "/image",
+				Image:       builtin.KustomizePatchImage{},
+			},
+			targetImage: types.Image{Name: "repo/demo", NewTag: "v2"},
+			assertions: func(t *testing.T, patch string, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, 1, strings.Count(patch, "path: /image"))
+				assert.Contains(t, patch, "value: repo/demo:v2")
 			},
 		},
 		{
