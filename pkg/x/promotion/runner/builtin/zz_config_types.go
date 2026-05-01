@@ -573,6 +573,54 @@ type KustomizeBuildConfig struct {
 	Plugin *Plugin `json:"plugin,omitempty"`
 }
 
+type KustomizePatchConfig struct {
+	// Image is a container image to set or update in the Kustomization patch.
+	Image KustomizePatchImage `json:"image"`
+	// Kind for the patch target. Together with labelSelector, this identifies the patch entry
+	// to update.
+	Kind string `json:"kind"`
+	// Label selector for the patch target. Together with kind, this identifies the patch entry
+	// to update.
+	LabelSelector string `json:"labelSelector"`
+	// Path to the directory containing the Kustomization file.
+	Path string `json:"path"`
+	// JSON pointer path to a full image value in the patch.
+	PathToImage string `json:"pathToImage,omitempty"`
+	// JSON pointer path to a repository value in the patch.
+	PathToRepository string `json:"pathToRepository,omitempty"`
+	// JSON pointer path to a tag value in the patch.
+	PathToTag string `json:"pathToTag,omitempty"`
+}
+
+// Image is a container image to set or update in the Kustomization patch.
+type KustomizePatchImage struct {
+	// Digest of the image to set. Mutually exclusive with 'tag' and 'useDigest=true'.
+	Digest string `json:"digest,omitempty"`
+	// Specifies a Freight origin to disambiguate image discovery.
+	FromOrigin *KustomizePatchOrigin `json:"fromOrigin,omitempty"`
+	// Image name of the repository from which to pick the version. This is the image name Kargo
+	// is subscribed to, and produces Freight for.
+	Image string `json:"image"`
+	// Name of the image as referenced by the patch target.
+	Name string `json:"name,omitempty"`
+	// NewName for the image. This can be used to rename the container image name in the
+	// manifests.
+	NewName string `json:"newName,omitempty"`
+	// Tag of the image to set. Mutually exclusive with 'digest' and 'useDigest=true'.
+	Tag string `json:"tag,omitempty"`
+	// UseDigest specifies whether to use the digest of the image instead of the tag discovered
+	// from Freight.
+	UseDigest bool `json:"useDigest,omitempty"`
+}
+
+// Specifies a Freight origin to disambiguate image discovery.
+type KustomizePatchOrigin struct {
+	// The kind of origin. Currently only 'Warehouse' is supported. Required.
+	Kind string `json:"kind"`
+	// The name of the origin. Required.
+	Name string `json:"name"`
+}
+
 // Plugin contains configuration for customizing the behavior of builtin Kustomize plugins.
 type Plugin struct {
 	// Helm contains configuration for inflating a Helm chart.

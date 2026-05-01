@@ -17,6 +17,7 @@ import httpConfig from '@ui/gen/directives/http-config.json';
 import jsonParseConfig from '@ui/gen/directives/json-parse-config.json';
 import jsonUpdateConfig from '@ui/gen/directives/json-update-config.json';
 import kustomizeBuildConfig from '@ui/gen/directives/kustomize-build-config.json';
+import kustomizePatchConfig from '@ui/gen/directives/kustomize-patch-config.json';
 import kustomizeSetImageConfig from '@ui/gen/directives/kustomize-set-image-config.json';
 import tomlParseConfig from '@ui/gen/directives/toml-parse-config.json';
 import tomlUpdateConfig from '@ui/gen/directives/toml-update-config.json';
@@ -112,6 +113,10 @@ export const useDiscoverPromotionDirectivesRegistries = (): PromotionDirectivesR
       {
         identifier: 'kustomize-build',
         config: kustomizeBuildConfig as JSONSchema7
+      },
+      {
+        identifier: 'kustomize-patch',
+        config: kustomizePatchConfig as JSONSchema7
       },
       {
         identifier: 'kustomize-set-image',
